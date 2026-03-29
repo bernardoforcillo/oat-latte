@@ -284,6 +284,84 @@ padded := layout.NewPaddingUniform(child, 1)
 padded := layout.NewPadding(child, latte.Insets{Top: 1, Right: 2, Bottom: 1, Left: 2})
 ```
 
+## ScrollView
+
+`ScrollView` clips a single child to a viewport and lets the user scroll vertically to reveal content that exceeds the available height. Use `VBox.AsScrollView()` or `HBox.AsScrollView()` for the most concise pattern, or construct one directly with `NewScrollView`.
+
+```go
+// Standalone constructor
+sv := layout.NewScrollView(myVBox).WithScrollBar(true)
+
+// Convenience builders — wrap a box directly
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true)
+sv := layout.NewHBox(cols...).AsScrollView()   // horizontal content, vertical scroll
+
+// Scroll bar on the left edge
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true, oat.AnchorLeft)
+```
+
+### WithScrollBar
+
+```go
+func (sv *ScrollView) WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView
+```
+
+| Parameter | Default | Effect |
+|---|---|---|
+| `show` | `false` | `true` — display a single-column gutter bar |
+| `anchor` (optional) | `oat.AnchorRight` | `oat.AnchorLeft` — move bar to the left edge |
+
+The bar uses the theme's `Muted` token for the track (`│`) and `Accent` FG for the thumb (`█`). These colours are set by `ApplyTheme` — there is no `WithStyle` on `ScrollView` because it has no visual identity of its own.
+
+### Nesting with Border
+
+Prefer **`Border(ScrollView(VBox))`** over `ScrollView(Border(VBox))`.
+
+In the correct pattern the border chrome is fixed and only the VBox content scrolls. In the reverse pattern the entire `Border` (including its title row) scrolls — the top border disappears as the user scrolls down.
+
+```go
+// CORRECT — fixed border, scrolling content:
+panel := layout.NewBorder(
+    layout.NewVBox(items...).AsScrollView().WithScrollBar(true),
+).WithTitle("Items")
+
+// VALID but unusual — entire border (including title) scrolls:
+panel := layout.NewScrollView(
+    layout.NewBorder(layout.NewVBox(items...)).WithTitle("Items"),
+).WithScrollBar(true)
+```
+
+### VFill / FlexChild inside ScrollView
+
+`VFill` and `FlexChild` behave differently depending on whether content overflows the viewport:
+
+- **Content fits** (no scrolling) — the full viewport height is passed to the child, so flex children expand normally.
+- **Content overflows** (scrolling active) — the child is measured unconstrained and flex children collapse to zero height.
+
+Avoid `VFill` / `FlexChild` inside a `ScrollView` that is expected to scroll; use fixed-height children instead.
+
+### Focus model
+
+`ScrollView` implements `oat.FocusGuard` so it is completely transparent to Tab cycling when nothing needs scrolling:
+
+- `IsFocusable()` returns `true` **only** when `contentH > viewportH`.
+- When content fits, `ScrollView` is invisible to Tab — arrow keys cycle focus through children as normal.
+- When content overflows, `ScrollView` gains a Tab stop and owns the scroll keys:
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | ±1 row |
+| `PgUp` / `PgDn` | ±viewport height |
+| `Home` / `End` | Jump to top / bottom |
+
+### Programmatic scroll
+
+```go
+sv.ScrollOffset() int        // current row offset
+sv.ContentHeight() int       // full unconstrained child height
+sv.ScrollTo(off int)         // set offset; clamped to [0, contentH-viewportH]
+```
+
 ## Grid
 
 Positions children in a fixed-size rows × columns grid with equal cell sizes.

@@ -22,7 +22,7 @@ Sub-packages:
 |---|---|
 | `github.com/antoniocali/oat-latte` | Core interfaces, `Canvas`, `Buffer`, `FocusManager`, geometry types |
 | `github.com/antoniocali/oat-latte/latte` | `Style`, `Color`, `BorderStyle`, `Theme`, built-in themes, named color palette |
-| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild` |
+| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild`, `ScrollView` |
 | `github.com/antoniocali/oat-latte/widget` | `Text`, `Title`, `Button`, `CheckBox`, `EditText`, `List`, `ComponentList`, `Label`, `ProgressBar`, `StatusBar`, `NotificationManager`, `Dialog`, `Divider` |
 
 ---
@@ -392,6 +392,9 @@ vbox.AddChild(layout.NewVFill().WithMaxSize(1))  // fixed 1-row gap
 
 hbox := layout.NewHBox(child1, child2)  // variadic shorthand
 hbox.AddFlexChild(progressBar, 1)
+
+// Wrap a VBox or HBox in a ScrollView with one call:
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true)
 ```
 
 #### Cross-axis alignment
@@ -503,6 +506,72 @@ func (b *Border) WithRoundedCorner(rounded bool) *Border
 ```go
 padded := layout.NewPaddingUniform(child, 1)          // 1 cell all sides
 padded := layout.NewPadding(child, latte.Insets{Top: 1, Left: 2})
+```
+
+### ScrollView
+
+`ScrollView` clips a single child to a viewport and lets the user scroll vertically to reveal content that exceeds the visible height.
+
+```go
+// Standalone constructor
+sv := layout.NewScrollView(myVBox).WithScrollBar(true)
+
+// Convenience builders on VBox / HBox
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true)
+sv := layout.NewHBox(cols...).AsScrollView()   // horizontal content, vertical scroll
+
+// Scroll bar on the left edge
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true, oat.AnchorLeft)
+```
+
+#### WithScrollBar
+
+```go
+func (sv *ScrollView) WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView
+```
+
+- `true` — display a single-column scroll bar; `false` (default) — no bar.
+- `oat.AnchorRight` (default) — bar on the right edge.
+- `oat.AnchorLeft` — bar on the left edge.
+- Bar colours: `Muted` token → track (`│`), `Accent` token → thumb (`█`). Set by `ApplyTheme`; cannot be overridden with `WithStyle` (ScrollView has no visual identity of its own).
+
+#### Nesting with Border
+
+Prefer `Border(ScrollView(VBox(…)))` over `ScrollView(Border(VBox(…)))`. In the first pattern the border chrome is fixed and only the VBox content scrolls. In the second pattern the entire Border (including its title row) scrolls — the top border disappears as the user scrolls down.
+
+```go
+// CORRECT — fixed border, scrolling content:
+panel := layout.NewBorder(
+    layout.NewVBox(items...).AsScrollView().WithScrollBar(true),
+).WithTitle("Items")
+
+// VALID but unusual — entire border scrolls:
+panel := layout.NewScrollView(
+    layout.NewBorder(layout.NewVBox(items...)).WithTitle("Items"),
+).WithScrollBar(true)
+```
+
+#### VFill / FlexChild inside ScrollView
+
+`VFill` and `FlexChild` behave differently depending on whether the content overflows the viewport:
+
+- **Content fits** (no scrolling) — the full viewport height is passed to the child, so flex children expand normally.
+- **Content overflows** (scrolling active) — the child is measured unconstrained and flex children collapse to zero height. Avoid `VFill` / `FlexChild` inside a `ScrollView` that is expected to scroll; use fixed-height children instead.
+
+#### Focus model
+
+`ScrollView` implements `oat.FocusGuard`:
+
+- `IsFocusable()` returns `true` only when `contentH > viewportH` — i.e. there is content to scroll.
+- When content fits, `ScrollView` is invisible to Tab and arrow keys cycle focus through children normally.
+- When content overflows, `ScrollView` gains a Tab stop and owns: `↑`/`↓` (±1 row), `PgUp`/`PgDn` (±viewport), `Home`/`End` (top/bottom).
+
+#### Scrollable interface
+
+```go
+sv.ScrollOffset() int          // current row offset
+sv.ContentHeight() int         // full unconstrained child height
+sv.ScrollTo(off int)           // set offset; clamped to [0, contentH-viewportH]
 ```
 
 ### Dialog

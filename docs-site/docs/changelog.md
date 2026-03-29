@@ -8,6 +8,34 @@ All notable changes to the oat-latte framework are listed here, newest first.
 
 ---
 
+## v0.2.9
+
+**`layout.ScrollView` — vertically scrollable layout container**
+
+### Added
+
+- **`layout.ScrollView`** — a layout container that clips a single child to a viewport and allows the user to scroll vertically to reveal content that exceeds the visible height.
+
+  - `layout.NewScrollView(child oat.Component) *ScrollView` — standalone constructor.
+  - `(*VBox).AsScrollView() *ScrollView` — convenience builder; wraps the VBox in a ScrollView in one call.
+  - `(*HBox).AsScrollView() *ScrollView` — same for HBox (horizontal content, vertical scroll).
+  - `(*ScrollView).WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView` — enables an optional single-column gutter bar. `oat.AnchorRight` (default) places it on the right edge; `oat.AnchorLeft` on the left. Bar colours are driven by the theme (`Muted` → track `│`, `Accent` FG → thumb `█`).
+  - `(*ScrollView).WithID(id string) *ScrollView` — sets a stable component identifier.
+  - `ScrollOffset() int`, `ContentHeight() int`, `ScrollTo(off int)` — programmatic scroll interface (`oat.Scrollable`).
+
+- **Focus model** — `ScrollView` implements `oat.FocusGuard`: `IsFocusable()` returns `true` only when `contentH > viewportH`. When content fits the widget is invisible to Tab cycling. When content overflows it gains a Tab stop and owns `↑`/`↓` (±1 row), `PgUp`/`PgDn` (±viewport), and `Home`/`End` (jump to extremes).
+
+- **`ApplyTheme`** — propagates the active theme to the child and maps `t.Muted.FG` → track colour, `t.Accent.FG` → thumb colour.
+
+- **Implements `oat.Layout`** (`Children()` / `AddChild`) so theme propagation and the focus collector recurse into the child tree automatically.
+
+### Notes
+
+- Prefer `Border(ScrollView(VBox))` over `ScrollView(Border(VBox))` — the former keeps the border chrome fixed while only the content scrolls. In the reverse pattern the entire Border (including its title row) scrolls away.
+- Avoid `VFill` / `FlexChild` inside a ScrollView that is expected to overflow — they collapse to zero height in the unconstrained measure pass. Use fixed-height children instead.
+
+---
+
 ## v0.2.8
 
 **Cross-axis alignment · `RoundedCorner` theme flag · `callerStyle` pattern**

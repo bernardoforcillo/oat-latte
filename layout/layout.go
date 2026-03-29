@@ -41,6 +41,16 @@ func (v *VBox) WithStyle(s latte.Style) *VBox { v.Style = s; return v }
 // WithGap sets the number of empty rows between children.
 func (v *VBox) WithGap(n int) *VBox { v.gap = n; return v }
 
+// AsScrollView wraps this VBox in a ScrollView, making its content vertically
+// scrollable. This is a convenience shorthand for layout.NewScrollView(vbox).
+//
+// Example:
+//
+//	panel := layout.NewBorder(
+//	    layout.NewVBox(items...).AsScrollView().WithScrollBar(true),
+//	).WithTitle("Results")
+func (v *VBox) AsScrollView() *ScrollView { return NewScrollView(v) }
+
 // WithHAlign sets the default horizontal alignment applied to every child in
 // this VBox that does not carry its own alignment preference.
 // Variadic so WithHAlign() with no argument resets to HAlignFill (full-width, unchanged).
@@ -219,6 +229,14 @@ func (h *HBox) WithStyle(s latte.Style) *HBox { h.Style = s; return h }
 
 // WithGap sets the number of empty columns between children.
 func (h *HBox) WithGap(n int) *HBox { h.gap = n; return h }
+
+// AsScrollView wraps this HBox in a ScrollView, making its content vertically
+// scrollable. This is a convenience shorthand for layout.NewScrollView(hbox).
+//
+// Note: HBox lays out children horizontally. AsScrollView is useful when the
+// HBox is taller than the viewport (e.g. an HBox containing tall column
+// panels), not for horizontal scrolling within a single row.
+func (h *HBox) AsScrollView() *ScrollView { return NewScrollView(h) }
 
 // WithVAlign sets the default vertical alignment applied to every child in
 // this HBox that does not carry its own alignment preference.
