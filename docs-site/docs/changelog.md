@@ -8,6 +8,33 @@ All notable changes to the oat-latte framework are listed here, newest first.
 
 ---
 
+## v0.2.10
+
+**ScrollView correctness fixes · `Buffer` origin/clip separation · `Constraint.Shrink` fix**
+
+### Fixed
+
+- **`Buffer.Sub` — separate `originX`/`originY` from `clip`** — Previously `Buffer` used a single `clip` field for both coordinate translation and write-guarding. Passing a sub-region with a negative Y offset (as `ScrollView` does to shift content upward by the scroll offset) caused the clip origin to move above the viewport boundary. `SetCell`'s guard `ay >= b.clip.Y` trivially passed for rows above the viewport, allowing scrolled-off content to bleed into neighbouring panels.
+
+  `Buffer` now has two independent internal fields:
+  - `originX` / `originY` — coordinate translation: `(x, y)` → `(originX+x, originY+y)` in screen space. Can be negative/above the viewport.
+  - `clip` — screen-space write guard: the **intersection** of the requested region's absolute bounding box with the parent's clip. Always stays within the parent.
+
+  `Sub` computes the new origin from `parentOrigin + region.XY` (supports negative) and the new clip as the intersection. All write methods (`SetCell`, `DrawText`, `DrawTextAligned`, `ShowCursor`) translate via origin but guard against clip. The result: `ScrollView` can shift the child's coordinate origin upward by `-scrollOffset` rows while the clip remains locked to the visible viewport — rows that translate above the clip are silently dropped.
+
+- **`ScrollView.Render` — re-measure child unconstrainedly** — `HBox.Render` calls `Render` on flex children (the `VAlignFill` path) **without calling `Measure` first** in the same frame when `VAlignFill` is in effect. This meant `sv.contentH` was set during `HBox.Measure` with a constrained `MaxHeight`. When content fit within the terminal height, `contentH == viewportH` → `HandleKey` returned `false` → arrow keys cycled focus rather than scrolling. Fixed by re-measuring the child with `Constraint{MaxWidth: w, MaxHeight: -1}` at the start of `ScrollView.Render`, so `contentH` always reflects the true unconstrained child height regardless of how the parent invoked `Render`.
+
+- **`Constraint.Shrink` — preserve `-1` (unconstrained)** — `Shrink` computed `h = c.MaxHeight - insets.Vertical()`. When `MaxHeight == -1` (unconstrained), this produced `-1 - 2 = -3`, which was then clamped to `0` — silently converting an unconstrained axis into a zero-height constraint. Fixed to detect `-1` on both axes and leave it unchanged.
+
+- **`ScrollView` — removed `FocusGuard`/`IsFocusable()`** — `ScrollView` previously implemented `oat.FocusGuard`, returning `contentH > viewportH`. Because the focus tree is collected once at startup **before** any `Measure`/`Render` pass, both values are `0` at collection time → `IsFocusable()` always returned `false` → `ScrollView` was permanently excluded from Tab cycling. Fixed by removing `IsFocusable()` entirely. `HandleKey` returns `false` when content fits the viewport so arrow keys fall through to focus cycling naturally.
+
+### Notes
+
+- The `Buffer` origin/clip separation is an internal implementation detail. The public API (`Sub`, `SetCell`, `DrawText`, etc.) is unchanged. Custom widgets that call `buf.Sub(region)` and write into the returned sub-buffer continue to work exactly as before.
+- The `ScrollView.Render` re-measure adds one extra `Measure` call per frame when `ScrollView` is a flex child of an `HBox` with `VAlignFill`. This is intentional and cheap — it is a single DFS over the child tree to obtain the true content height.
+
+---
+
 ## v0.2.9
 
 **`layout.ScrollView` — vertically scrollable layout container**
