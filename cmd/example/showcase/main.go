@@ -3,7 +3,7 @@
 // widget, layout container, style option, alignment and anchor the framework
 // exposes, so that all features are visible and verifiable in one place.
 //
-// Layout (three-column body):
+// Layout (four-column body):
 //
 //	header: title centred + theme name right-aligned
 //
@@ -12,7 +12,6 @@
 //	│  CheckBoxes                                 │
 //	│  Dividers (H + V)                           │
 //	│  ProgressBars (every anchor)                │
-//	│  ScrollView (Border(ScrollView(VBox)))       │
 //	└─────────────────────────────────────────────┘
 //	┌── Middle column ────────────────────────────┐
 //	│  List  (top half, flex 1)                   │
@@ -24,6 +23,10 @@
 //	│  Text (VAlign variants)                     │
 //	│  AlignChild showcase                        │
 //	│  Labels (tag chips)                         │
+//	└─────────────────────────────────────────────┘
+//	┌── Scroll column ────────────────────────────┐
+//	│  ScrollView — Border(ScrollView(VBox))      │
+//	│  20 NATO rows, custom track/thumb colours   │
 //	└─────────────────────────────────────────────┘
 //
 //	footer: StatusBar (auto key-hints)
@@ -242,8 +245,6 @@ func (a *App) buildLeft() oat.Component {
 		divSection,
 		layout.NewVFill().WithMaxSize(1),
 		pbSection,
-		layout.NewVFill().WithMaxSize(1),
-		layout.NewFlexChild(a.buildScrollSection(), 1),
 	)
 	return layout.NewBorder(
 		layout.NewPadding(col, oat.Insets{Top: 0, Right: 1, Bottom: 0, Left: 1}),
@@ -570,11 +571,13 @@ func (a *App) build() {
 	left := a.buildLeft()
 	middle := a.buildMiddle()
 	right := a.buildRight()
+	scroll := a.buildScrollSection()
 
 	body := layout.NewHBox()
 	body.AddFlexChild(left, 3)
 	body.AddFlexChild(middle, 3)
 	body.AddFlexChild(right, 4)
+	body.AddFlexChild(scroll, 2)
 
 	statusBar := widget.NewStatusBar()
 
