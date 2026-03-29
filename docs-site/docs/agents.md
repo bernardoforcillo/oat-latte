@@ -533,7 +533,24 @@ func (sv *ScrollView) WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView
 - `true` — display a single-column scroll bar; `false` (default) — no bar.
 - `oat.AnchorRight` (default) — bar on the right edge.
 - `oat.AnchorLeft` — bar on the left edge.
-- Bar colours: `Muted` token → track (`│`), `Accent` token → thumb (`█`). Set by `ApplyTheme`; cannot be overridden with `WithStyle` (ScrollView has no visual identity of its own).
+- Bar colours: `Muted` token → track (`│`), `Accent` token → thumb (`█`). Set by `ApplyTheme`; can be overridden per-component with `WithTrackColor` / `WithThumbColor`.
+
+#### WithTrackColor / WithThumbColor
+
+```go
+func (sv *ScrollView) WithTrackColor(c latte.Color) *ScrollView
+func (sv *ScrollView) WithThumbColor(c latte.Color) *ScrollView
+```
+
+Override the scroll bar colours for this specific `ScrollView`. Pass any `latte.Color` — `latte.RGB`, `latte.Hex`, or a named palette constant. Overrides survive `SetTheme` calls; the theme never replaces a value set here. Pass `latte.ColorDefault` to revert to theme-driven behaviour.
+
+```go
+// Accent track, bright thumb
+sv := layout.NewVBox(items...).AsScrollView().
+    WithScrollBar(true).
+    WithTrackColor(latte.Hex("#444466")).
+    WithThumbColor(latte.ColorBrightCyan)
+```
 
 #### Nesting with Border
 

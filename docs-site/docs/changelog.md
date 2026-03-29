@@ -19,7 +19,9 @@ All notable changes to the oat-latte framework are listed here, newest first.
   - `layout.NewScrollView(child oat.Component) *ScrollView` — standalone constructor.
   - `(*VBox).AsScrollView() *ScrollView` — convenience builder; wraps the VBox in a ScrollView in one call.
   - `(*HBox).AsScrollView() *ScrollView` — same for HBox (horizontal content, vertical scroll).
-  - `(*ScrollView).WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView` — enables an optional single-column gutter bar. `oat.AnchorRight` (default) places it on the right edge; `oat.AnchorLeft` on the left. Bar colours are driven by the theme (`Muted` → track `│`, `Accent` FG → thumb `█`).
+  - `(*ScrollView).WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView` — enables an optional single-column gutter bar. `oat.AnchorRight` (default) places it on the right edge; `oat.AnchorLeft` on the left. Bar colours are driven by the theme (`Muted` → track `│`, `Accent` FG → thumb `█`) and can be overridden with `WithTrackColor` / `WithThumbColor`.
+  - `(*ScrollView).WithTrackColor(c latte.Color) *ScrollView` — overrides the track colour for this ScrollView. Survives `SetTheme`; pass `latte.ColorDefault` to revert to theme-driven behaviour.
+  - `(*ScrollView).WithThumbColor(c latte.Color) *ScrollView` — overrides the thumb colour. Same semantics as `WithTrackColor`.
   - `(*ScrollView).WithID(id string) *ScrollView` — sets a stable component identifier.
   - `ScrollOffset() int`, `ContentHeight() int`, `ScrollTo(off int)` — programmatic scroll interface (`oat.Scrollable`).
 

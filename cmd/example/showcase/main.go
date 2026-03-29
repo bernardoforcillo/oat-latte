@@ -12,6 +12,7 @@
 //	│  CheckBoxes                                 │
 //	│  Dividers (H + V)                           │
 //	│  ProgressBars (every anchor)                │
+//	│  ScrollView (Border(ScrollView(VBox)))       │
 //	└─────────────────────────────────────────────┘
 //	┌── Middle column ────────────────────────────┐
 //	│  List  (top half, flex 1)                   │
@@ -241,10 +242,44 @@ func (a *App) buildLeft() oat.Component {
 		divSection,
 		layout.NewVFill().WithMaxSize(1),
 		pbSection,
+		layout.NewVFill().WithMaxSize(1),
+		layout.NewFlexChild(a.buildScrollSection(), 1),
 	)
 	return layout.NewBorder(
 		layout.NewPadding(col, oat.Insets{Top: 0, Right: 1, Bottom: 0, Left: 1}),
 	).WithTitle("Widgets", oat.AnchorLeft).WithRoundedCorner(true)
+}
+
+// ── scroll section ────────────────────────────────────────────────────────────
+
+// buildScrollSection demonstrates the canonical Border(ScrollView(VBox))
+// pattern.  The inner VBox holds enough rows to always overflow the fixed-height
+// viewport, so ScrollView gains a Tab stop and the user can scroll with ↑/↓,
+// PgUp/PgDn, and Home/End.  WithTrackColor and WithThumbColor override the
+// default Muted/Accent theme colours for this specific scroll bar.
+func (a *App) buildScrollSection() oat.Component {
+	rows := []string{
+		"Alpha", "Bravo", "Charlie", "Delta", "Echo",
+		"Foxtrot", "Golf", "Hotel", "India", "Juliet",
+		"Kilo", "Lima", "Mike", "November", "Oscar",
+		"Papa", "Quebec", "Romeo", "Sierra", "Tango",
+	}
+
+	content := layout.NewVBox()
+	for i, r := range rows {
+		content.AddChild(widget.NewText(fmt.Sprintf("%2d. %s", i+1, r)))
+	}
+
+	// Border(ScrollView(VBox)) — fixed border chrome, scrolling content.
+	// WithTrackColor / WithThumbColor override the theme-driven defaults.
+	sv := content.AsScrollView().
+		WithScrollBar(true).
+		WithTrackColor(latte.Hex("#444466")).
+		WithThumbColor(latte.ColorBrightCyan)
+
+	return layout.NewBorder(sv).
+		WithTitle("ScrollView", oat.AnchorLeft).
+		WithRoundedCorner(true)
 }
 
 // ── middle column ─────────────────────────────────────────────────────────────

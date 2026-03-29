@@ -40,8 +40,9 @@ import (
 //
 // An optional single-column scroll bar can be shown with WithScrollBar.
 // By default it appears on the right edge; pass oat.AnchorLeft to move it to
-// the left edge. The bar uses the theme's Muted colour for the track and the
-// Accent FG for the thumb; these are set by ApplyTheme.
+// the left edge. Bar colours come from the active theme (Muted → track,
+// Accent → thumb) and can be overridden per-component with WithTrackColor and
+// WithThumbColor.
 type ScrollView struct {
 	oat.BaseComponent
 	oat.FocusBehavior
@@ -54,7 +55,16 @@ type ScrollView struct {
 	showScrollBar   bool
 	scrollBarAnchor oat.Anchor // AnchorRight (default) or AnchorLeft
 
-	// Scroll bar colours, set by ApplyTheme.
+	// callerTrackColor / callerThumbColor hold the colours explicitly set by
+	// the caller via WithTrackColor / WithThumbColor.  A zero value
+	// (latte.ColorDefault) means "not set — inherit from theme".  ApplyTheme
+	// checks these before falling back to the theme token so that explicit
+	// overrides survive SetTheme calls unchanged.
+	callerTrackColor latte.Color
+	callerThumbColor latte.Color
+
+	// Effective scroll bar styles resolved by ApplyTheme (or by the builder
+	// when no theme has been applied yet).
 	trackStyle latte.Style
 	thumbStyle latte.Style
 }
@@ -82,6 +92,30 @@ func (sv *ScrollView) WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView
 	return sv
 }
 
+// WithTrackColor overrides the colour used for the scroll bar track (the
+// gutter cells that are not covered by the thumb).  Pass any latte.Color —
+// latte.RGB, latte.Hex, or a named palette constant.
+//
+// The override survives SetTheme calls: once set it is never replaced by
+// ApplyTheme.  Pass latte.ColorDefault to revert to theme-driven behaviour.
+func (sv *ScrollView) WithTrackColor(c latte.Color) *ScrollView {
+	sv.callerTrackColor = c
+	sv.trackStyle = latte.Style{FG: c}
+	return sv
+}
+
+// WithThumbColor overrides the colour used for the scroll bar thumb (the
+// indicator that moves as the user scrolls).  Pass any latte.Color —
+// latte.RGB, latte.Hex, or a named palette constant.
+//
+// The override survives SetTheme calls: once set it is never replaced by
+// ApplyTheme.  Pass latte.ColorDefault to revert to theme-driven behaviour.
+func (sv *ScrollView) WithThumbColor(c latte.Color) *ScrollView {
+	sv.callerThumbColor = c
+	sv.thumbStyle = latte.Style{FG: c}
+	return sv
+}
+
 // WithID sets a user-defined identifier on this component.
 func (sv *ScrollView) WithID(id string) *ScrollView { sv.ID = id; return sv }
 
@@ -101,11 +135,21 @@ func (sv *ScrollView) Children() []oat.Component {
 
 // --- oat.ThemeReceiver -----------------------------------------------------
 
-// ApplyTheme propagates the active theme to the child and derives the scroll
-// bar colours from the Muted (track) and Accent (thumb) tokens.
+// ApplyTheme propagates the active theme to the child and resolves the scroll
+// bar colours.  The resolution order for each colour is:
+//  1. Caller override (WithTrackColor / WithThumbColor) — survives SetTheme.
+//  2. Theme token: Muted.FG for the track, Accent.FG for the thumb.
 func (sv *ScrollView) ApplyTheme(t latte.Theme) {
-	sv.trackStyle = latte.Style{FG: t.Muted.FG}
-	sv.thumbStyle = latte.Style{FG: t.Accent.FG}
+	trackColor := t.Muted.FG
+	if sv.callerTrackColor != latte.ColorDefault {
+		trackColor = sv.callerTrackColor
+	}
+	thumbColor := t.Accent.FG
+	if sv.callerThumbColor != latte.ColorDefault {
+		thumbColor = sv.callerThumbColor
+	}
+	sv.trackStyle = latte.Style{FG: trackColor}
+	sv.thumbStyle = latte.Style{FG: thumbColor}
 	if tr, ok := sv.child.(oat.ThemeReceiver); ok {
 		tr.ApplyTheme(t)
 	}
