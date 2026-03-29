@@ -278,16 +278,29 @@ func (sv *ScrollView) Render(buf *oat.Buffer, region oat.Region) {
 	}
 
 	// Update cached viewport height from the actually allocated region (it may
-	// differ from what Measure saw if the parent over-allocated).
+	// differ from what Measure saw if the parent over-allocated or skipped
+	// Measure for flex children before calling Render directly).
 	sv.viewportH = region.Height
+
+	// Re-measure the child unconstrained to get the true content height.
+	// This is necessary because some parents (e.g. HBox) call Render on flex
+	// children without a prior Measure pass, so sv.contentH may reflect a
+	// constrained measurement that incorrectly reported "content fits".
+	childMaxW := region.Width
+	if sv.showScrollBar && childMaxW > 1 {
+		childMaxW--
+	}
+	raw := sv.child.Measure(oat.Constraint{MaxWidth: childMaxW, MaxHeight: -1})
+	sv.contentH = raw.Height
 
 	// Clamp scroll offset in case viewport or content changed since last frame.
 	sv.ScrollTo(sv.scrollOff)
 
-	// Determine effective content width (reserve one column for scroll bar).
+	// Determine effective content width (reserve one column for scroll bar
+	// only when scrolling is actually active).
 	contentW := region.Width
 	if sv.showScrollBar && sv.contentH > sv.viewportH {
-		contentW--
+		contentW = childMaxW // already reduced by 1 for the bar column
 		if contentW < 0 {
 			contentW = 0
 		}
