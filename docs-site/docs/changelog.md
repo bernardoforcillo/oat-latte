@@ -25,7 +25,7 @@ All notable changes to the oat-latte framework are listed here, newest first.
   - `(*ScrollView).WithID(id string) *ScrollView` — sets a stable component identifier.
   - `ScrollOffset() int`, `ContentHeight() int`, `ScrollTo(off int)` — programmatic scroll interface (`oat.Scrollable`).
 
-- **Focus model** — `ScrollView` implements `oat.FocusGuard`: `IsFocusable()` returns `true` only when `contentH > viewportH`. When content fits the widget is invisible to Tab cycling. When content overflows it gains a Tab stop and owns `↑`/`↓` (±1 row), `PgUp`/`PgDn` (±viewport), and `Home`/`End` (jump to extremes).
+- **Focus model** — `ScrollView` is always present in the Tab cycle. `HandleKey` returns `false` for scroll keys when content fits the viewport so arrows fall through to inter-widget cycling. When content overflows it consumes `↑`/`↓` (±1 row), `PgUp`/`PgDn` (±viewport), and `Home`/`End` (jump to extremes).
 
 - **`ApplyTheme`** — propagates the active theme to the child and maps `t.Muted.FG` → track colour, `t.Accent.FG` → thumb colour.
 

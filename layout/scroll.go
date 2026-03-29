@@ -30,11 +30,11 @@ import (
 //
 // # Focus model
 //
-// ScrollView implements oat.FocusGuard: it is only added to the Tab-cycle when
-// the content height exceeds the viewport height. When content fits the widget
-// is invisible to Tab and the arrow keys cycle focus normally through children.
-// When content overflows ScrollView gains a Tab stop and owns the scroll keys:
-// ↑/↓ (±1 row), PgUp/PgDn (±viewport), Home/End (top/bottom).
+// ScrollView is always present in the Tab-cycle so that it can be reached
+// before the first render (when content/viewport heights are not yet known).
+// HandleKey returns false for scroll keys when content fits the viewport so
+// arrow keys fall through to inter-widget focus cycling as usual.
+// When content overflows, HandleKey consumes ↑/↓, PgUp/PgDn, and Home/End.
 //
 // # Scroll bar
 //
@@ -155,22 +155,18 @@ func (sv *ScrollView) ApplyTheme(t latte.Theme) {
 	}
 }
 
-// --- oat.FocusGuard --------------------------------------------------------
-
-// IsFocusable returns true only when the content height exceeds the viewport
-// height — i.e. there is actually something to scroll. When content fits,
-// ScrollView is invisible to Tab cycling and the arrow keys cycle focus through
-// children as normal.
-func (sv *ScrollView) IsFocusable() bool {
-	return sv.contentH > sv.viewportH
-}
-
 // --- oat.Focusable ---------------------------------------------------------
 
-// HandleKey handles the scroll keys when ScrollView has focus.
+// HandleKey handles the scroll keys when ScrollView has focus and content
+// overflows the viewport. When content fits (contentH <= viewportH), all keys
+// return false so arrows fall through to inter-widget focus cycling.
 // ↑/↓ scroll by one row, PgUp/PgDn by a full viewport, Home/End jump to the
-// extremes. Returns true (consumed) for all recognised keys.
+// extremes. Returns true (consumed) only when scrolling is active and the key
+// is a recognised scroll key.
 func (sv *ScrollView) HandleKey(ev *oat.KeyEvent) bool {
+	if sv.contentH <= sv.viewportH {
+		return false
+	}
 	switch ev.Key() {
 	case tcell.KeyUp:
 		sv.ScrollTo(sv.scrollOff - 1)

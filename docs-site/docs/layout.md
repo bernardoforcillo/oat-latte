@@ -359,17 +359,15 @@ Avoid `VFill` / `FlexChild` inside a `ScrollView` that is expected to scroll; us
 
 ### Focus model
 
-`ScrollView` implements `oat.FocusGuard` so it is completely transparent to Tab cycling when nothing needs scrolling:
-
-- `IsFocusable()` returns `true` **only** when `contentH > viewportH`.
-- When content fits, `ScrollView` is invisible to Tab — arrow keys cycle focus through children as normal.
-- When content overflows, `ScrollView` gains a Tab stop and owns the scroll keys:
+`ScrollView` is always present in the Tab cycle. `HandleKey` returns `false` for all scroll keys when content fits the viewport, so arrow keys fall through to inter-widget focus cycling as usual. When content overflows, `HandleKey` consumes the scroll keys:
 
 | Key | Action |
 |---|---|
 | `↑` / `↓` | ±1 row |
 | `PgUp` / `PgDn` | ±viewport height |
 | `Home` / `End` | Jump to top / bottom |
+
+Do **not** implement `FocusGuard` on `ScrollView` — the focus tree is collected once at startup before any `Measure`/`Render` pass, so `contentH` and `viewportH` are both zero at collection time. A `FocusGuard` that checks `contentH > viewportH` would always return `false` at startup, permanently excluding the widget from Tab cycling.
 
 ### Programmatic scroll
 
