@@ -18,10 +18,29 @@ import (
 //
 // All rendering in oat-latte goes through a Buffer — no component
 // ever writes directly to tcell.Screen.
+//
+// # Coordinate model
+//
+// Each Buffer has two independent concepts:
+//   - origin (originX, originY): the screen-coordinate offset added to every
+//     caller-relative (x, y) before writing. This is what shifts the coordinate
+//     space for a child component.
+//   - clip (clip Region): the screen-space rectangle outside of which all
+//     writes are silently dropped. The clip is ALWAYS within the parent's clip,
+//     regardless of the origin. This is what enforces viewport boundaries.
+//
+// Separating origin from clip allows ScrollView to shift the child's origin
+// upward by -scrollOff rows (so row 0 in the child maps to screen row
+// origin.Y - scrollOff, which is above the viewport) while still clipping all
+// writes to the visible viewport rectangle. Without this separation, a negative
+// Y offset in Sub would push the clip region above the viewport and allow
+// content to bleed into neighbouring panels.
 type Buffer struct {
-	screen tcell.Screen
-	clip   Region      // current clipping region
-	bg     latte.Color // inherited background colour; ColorDefault until a fill is done
+	screen  tcell.Screen
+	clip    Region      // screen-space write guard; all writes outside are dropped
+	originX int         // screen X of coordinate (0,0) in this buffer
+	originY int         // screen Y of coordinate (0,0) in this buffer
+	bg      latte.Color // inherited background colour; ColorDefault until a fill is done
 }
 
 // newBuffer creates a Buffer wrapping the given tcell.Screen.
@@ -29,29 +48,66 @@ type Buffer struct {
 func newBuffer(screen tcell.Screen) *Buffer {
 	w, h := screen.Size()
 	return &Buffer{
-		screen: screen,
-		clip:   Region{X: 0, Y: 0, Width: w, Height: h},
+		screen:  screen,
+		clip:    Region{X: 0, Y: 0, Width: w, Height: h},
+		originX: 0,
+		originY: 0,
 	}
 }
 
-// Sub returns a new Buffer whose clipping region is restricted to region.
+// Sub returns a new Buffer whose coordinate origin is at region's top-left
+// corner (relative to this buffer's origin) and whose clip region is the
+// intersection of region with this buffer's clip.
+//
 // Coordinates passed to the sub-buffer are relative to region's origin.
 // The parent's current background colour is inherited so children that render
 // with BG == ColorDefault appear on top of the parent's background.
+//
+// Negative region.X / region.Y values are fully supported: the coordinate
+// origin is translated (so Y=0 in the child maps to above the parent's visible
+// area) while the clip is still intersected with the parent, ensuring that
+// writes outside the visible viewport are always discarded. This is the
+// mechanism ScrollView uses to shift content up by -scrollOff rows while
+// guaranteeing that nothing bleeds above the border into neighbouring panels.
 func (b *Buffer) Sub(region Region) *Buffer {
-	// Convert region to absolute screen coordinates, clipped to parent.
-	absX := b.clip.X + region.X
-	absY := b.clip.Y + region.Y
+	// New origin in absolute screen coordinates.
+	newOriginX := b.originX + region.X
+	newOriginY := b.originY + region.Y
 
-	// Clamp width/height so we never exceed the parent clip.
-	w := region.Width
-	if absX+w > b.clip.X+b.clip.Width {
-		w = b.clip.X + b.clip.Width - absX
+	// The clip is the intersection of region (in absolute coords) with the
+	// parent's existing clip.  We compute the region's absolute bounding box
+	// first, then intersect.
+	regAbsX := b.originX + region.X
+	regAbsY := b.originY + region.Y
+	regAbsRight := regAbsX + region.Width
+	regAbsBottom := regAbsY + region.Height
+
+	// Parent clip bounds.
+	clipLeft := b.clip.X
+	clipTop := b.clip.Y
+	clipRight := b.clip.X + b.clip.Width
+	clipBottom := b.clip.Y + b.clip.Height
+
+	// Intersection.
+	intLeft := regAbsX
+	if clipLeft > intLeft {
+		intLeft = clipLeft
 	}
-	h := region.Height
-	if absY+h > b.clip.Y+b.clip.Height {
-		h = b.clip.Y + b.clip.Height - absY
+	intTop := regAbsY
+	if clipTop > intTop {
+		intTop = clipTop
 	}
+	intRight := regAbsRight
+	if clipRight < intRight {
+		intRight = clipRight
+	}
+	intBottom := regAbsBottom
+	if clipBottom < intBottom {
+		intBottom = clipBottom
+	}
+
+	w := intRight - intLeft
+	h := intBottom - intTop
 	if w < 0 {
 		w = 0
 	}
@@ -60,9 +116,11 @@ func (b *Buffer) Sub(region Region) *Buffer {
 	}
 
 	return &Buffer{
-		screen: b.screen,
-		clip:   Region{X: absX, Y: absY, Width: w, Height: h},
-		bg:     b.bg, // inherit parent background
+		screen:  b.screen,
+		clip:    Region{X: intLeft, Y: intTop, Width: w, Height: h},
+		originX: newOriginX,
+		originY: newOriginY,
+		bg:      b.bg,
 	}
 }
 
@@ -88,11 +146,11 @@ func (b *Buffer) resolveBorderStyle(style latte.Style) latte.Style {
 	return style
 }
 
-// SetCell writes a single rune at (x, y) relative to the buffer's clip origin.
-// Out-of-bounds writes are silently dropped.
+// SetCell writes a single rune at (x, y) relative to the buffer's origin.
+// Out-of-bounds writes (outside the clip region) are silently dropped.
 func (b *Buffer) SetCell(x, y int, ch rune, style latte.Style) {
-	ax := b.clip.X + x
-	ay := b.clip.Y + y
+	ax := b.originX + x
+	ay := b.originY + y
 	if ax < b.clip.X || ax >= b.clip.X+b.clip.Width {
 		return
 	}
@@ -104,8 +162,8 @@ func (b *Buffer) SetCell(x, y int, ch rune, style latte.Style) {
 
 // SetCellTcell writes a cell using a raw tcell.Style (used internally for borders).
 func (b *Buffer) SetCellTcell(x, y int, ch rune, style tcell.Style) {
-	ax := b.clip.X + x
-	ay := b.clip.Y + y
+	ax := b.originX + x
+	ay := b.originY + y
 	if ax < b.clip.X || ax >= b.clip.X+b.clip.Width {
 		return
 	}
@@ -151,10 +209,17 @@ func (b *Buffer) DrawText(x, y int, text string, style latte.Style) int {
 	ts := b.resolveStyle(style).ToTcell()
 	cx := x
 	for _, ch := range text {
-		if cx >= b.clip.Width {
-			break
+		ax := b.originX + cx
+		ay := b.originY + y
+		if ax < b.clip.X || ax >= b.clip.X+b.clip.Width {
+			cx++
+			continue
 		}
-		b.screen.SetContent(b.clip.X+cx, b.clip.Y+y, ch, nil, ts)
+		if ay < b.clip.Y || ay >= b.clip.Y+b.clip.Height {
+			cx++
+			continue
+		}
+		b.screen.SetContent(ax, ay, ch, nil, ts)
 		cx++
 	}
 	return cx
@@ -181,10 +246,18 @@ func (b *Buffer) DrawTextAligned(x, y, width int, text string, align latte.Align
 	ts := b.resolveStyle(style).ToTcell()
 	for i, ch := range runes {
 		cx := startX + i
-		if cx < x || cx >= x+width || cx >= b.clip.Width {
+		if cx < x || cx >= x+width {
 			continue
 		}
-		b.screen.SetContent(b.clip.X+cx, b.clip.Y+y, ch, nil, ts)
+		ax := b.originX + cx
+		ay := b.originY + y
+		if ax < b.clip.X || ax >= b.clip.X+b.clip.Width {
+			continue
+		}
+		if ay < b.clip.Y || ay >= b.clip.Y+b.clip.Height {
+			continue
+		}
+		b.screen.SetContent(ax, ay, ch, nil, ts)
 	}
 }
 
@@ -275,7 +348,7 @@ func (b *Buffer) DrawBorderTitle(borderStyle latte.BorderStyle, title string, ti
 // ShowCursor positions the terminal cursor at (x, y) within this buffer.
 // Used by EditText to show the insertion point.
 func (b *Buffer) ShowCursor(x, y int) {
-	b.screen.ShowCursor(b.clip.X+x, b.clip.Y+y)
+	b.screen.ShowCursor(b.originX+x, b.originY+y)
 }
 
 // HideCursor hides the terminal cursor.

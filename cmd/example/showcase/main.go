@@ -3,7 +3,7 @@
 // widget, layout container, style option, alignment and anchor the framework
 // exposes, so that all features are visible and verifiable in one place.
 //
-// Layout (three-column body):
+// Layout (four-column body):
 //
 //	header: title centred + theme name right-aligned
 //
@@ -23,6 +23,10 @@
 //	│  Text (VAlign variants)                     │
 //	│  AlignChild showcase                        │
 //	│  Labels (tag chips)                         │
+//	└─────────────────────────────────────────────┘
+//	┌── Scroll column ────────────────────────────┐
+//	│  ScrollView — Border(ScrollView(VBox))      │
+//	│  20 NATO rows, custom track/thumb colours   │
 //	└─────────────────────────────────────────────┘
 //
 //	footer: StatusBar (auto key-hints)
@@ -245,6 +249,46 @@ func (a *App) buildLeft() oat.Component {
 	return layout.NewBorder(
 		layout.NewPadding(col, oat.Insets{Top: 0, Right: 1, Bottom: 0, Left: 1}),
 	).WithTitle("Widgets", oat.AnchorLeft).WithRoundedCorner(true)
+}
+
+// ── scroll section ────────────────────────────────────────────────────────────
+
+// buildScrollSection demonstrates the canonical Border(ScrollView(VBox))
+// pattern.  The inner VBox holds enough rows to always overflow the visible
+// viewport on any reasonable terminal height, so ScrollView gains a Tab stop
+// and the user can scroll with ↑/↓, PgUp/PgDn, and Home/End.
+// WithTrackColor and WithThumbColor override the default Muted/Accent theme
+// colours for this specific scroll bar.
+func (a *App) buildScrollSection() oat.Component {
+	rows := []string{
+		// NATO phonetic alphabet (26)
+		"Alpha", "Bravo", "Charlie", "Delta", "Echo",
+		"Foxtrot", "Golf", "Hotel", "India", "Juliet",
+		"Kilo", "Lima", "Mike", "November", "Oscar",
+		"Papa", "Quebec", "Romeo", "Sierra", "Tango",
+		"Uniform", "Victor", "Whiskey", "X-ray", "Yankee", "Zulu",
+		// Extra rows to guarantee overflow on tall terminals
+		"Able", "Baker", "Cast", "Dog", "Easy",
+		"Fox", "George", "How", "Item", "Jig",
+		"King", "Love", "Mike", "Nan", "Oboe",
+		"Peter", "Queen", "Roger", "Sugar", "Tare",
+	}
+
+	content := layout.NewVBox()
+	for i, r := range rows {
+		content.AddChild(widget.NewText(fmt.Sprintf("%2d. %s", i+1, r)))
+	}
+
+	// Border(ScrollView(VBox)) — fixed border chrome, scrolling content.
+	// WithTrackColor / WithThumbColor override the theme-driven defaults.
+	sv := content.AsScrollView().
+		WithScrollBar(true).
+		WithTrackColor(latte.Hex("#444466")).
+		WithThumbColor(latte.ColorBrightCyan)
+
+	return layout.NewBorder(sv).
+		WithTitle("ScrollView", oat.AnchorLeft).
+		WithRoundedCorner(true)
 }
 
 // ── middle column ─────────────────────────────────────────────────────────────
@@ -535,11 +579,13 @@ func (a *App) build() {
 	left := a.buildLeft()
 	middle := a.buildMiddle()
 	right := a.buildRight()
+	scroll := a.buildScrollSection()
 
 	body := layout.NewHBox()
 	body.AddFlexChild(left, 3)
 	body.AddFlexChild(middle, 3)
 	body.AddFlexChild(right, 4)
+	body.AddFlexChild(scroll, 2)
 
 	statusBar := widget.NewStatusBar()
 

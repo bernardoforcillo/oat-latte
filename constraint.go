@@ -47,14 +47,21 @@ func Symmetric(vertical, horizontal int) Insets {
 }
 
 // Shrink reduces a Constraint by the given insets, ensuring it never goes below 0.
+// A value of -1 means unconstrained and is preserved unchanged on that axis.
 func (c Constraint) Shrink(insets Insets) Constraint {
-	w := c.MaxWidth - insets.Horizontal()
-	h := c.MaxHeight - insets.Vertical()
-	if w < 0 {
-		w = 0
+	w := c.MaxWidth
+	if w >= 0 {
+		w -= insets.Horizontal()
+		if w < 0 {
+			w = 0
+		}
 	}
-	if h < 0 {
-		h = 0
+	h := c.MaxHeight
+	if h >= 0 {
+		h -= insets.Vertical()
+		if h < 0 {
+			h = 0
+		}
 	}
 	return Constraint{MaxWidth: w, MaxHeight: h}
 }

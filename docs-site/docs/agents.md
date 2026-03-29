@@ -22,7 +22,7 @@ Sub-packages:
 |---|---|
 | `github.com/antoniocali/oat-latte` | Core interfaces, `Canvas`, `Buffer`, `FocusManager`, geometry types |
 | `github.com/antoniocali/oat-latte/latte` | `Style`, `Color`, `BorderStyle`, `Theme`, built-in themes, named color palette |
-| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild` |
+| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild`, `ScrollView` |
 | `github.com/antoniocali/oat-latte/widget` | `Text`, `Title`, `Button`, `CheckBox`, `EditText`, `List`, `ComponentList`, `Label`, `ProgressBar`, `StatusBar`, `NotificationManager`, `Dialog`, `Divider` |
 
 ---
@@ -392,6 +392,9 @@ vbox.AddChild(layout.NewVFill().WithMaxSize(1))  // fixed 1-row gap
 
 hbox := layout.NewHBox(child1, child2)  // variadic shorthand
 hbox.AddFlexChild(progressBar, 1)
+
+// Wrap a VBox or HBox in a ScrollView with one call:
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true)
 ```
 
 #### Cross-axis alignment
@@ -503,6 +506,87 @@ func (b *Border) WithRoundedCorner(rounded bool) *Border
 ```go
 padded := layout.NewPaddingUniform(child, 1)          // 1 cell all sides
 padded := layout.NewPadding(child, latte.Insets{Top: 1, Left: 2})
+```
+
+### ScrollView
+
+`ScrollView` clips a single child to a viewport and lets the user scroll vertically to reveal content that exceeds the visible height.
+
+```go
+// Standalone constructor
+sv := layout.NewScrollView(myVBox).WithScrollBar(true)
+
+// Convenience builders on VBox / HBox
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true)
+sv := layout.NewHBox(cols...).AsScrollView()   // horizontal content, vertical scroll
+
+// Scroll bar on the left edge
+sv := layout.NewVBox(items...).AsScrollView().WithScrollBar(true, oat.AnchorLeft)
+```
+
+#### WithScrollBar
+
+```go
+func (sv *ScrollView) WithScrollBar(show bool, anchor ...oat.Anchor) *ScrollView
+```
+
+- `true` — display a single-column scroll bar; `false` (default) — no bar.
+- `oat.AnchorRight` (default) — bar on the right edge.
+- `oat.AnchorLeft` — bar on the left edge.
+- Bar colours: `Muted` token → track (`│`), `Accent` token → thumb (`█`). Set by `ApplyTheme`; can be overridden per-component with `WithTrackColor` / `WithThumbColor`.
+
+#### WithTrackColor / WithThumbColor
+
+```go
+func (sv *ScrollView) WithTrackColor(c latte.Color) *ScrollView
+func (sv *ScrollView) WithThumbColor(c latte.Color) *ScrollView
+```
+
+Override the scroll bar colours for this specific `ScrollView`. Pass any `latte.Color` — `latte.RGB`, `latte.Hex`, or a named palette constant. Overrides survive `SetTheme` calls; the theme never replaces a value set here. Pass `latte.ColorDefault` to revert to theme-driven behaviour.
+
+```go
+// Accent track, bright thumb
+sv := layout.NewVBox(items...).AsScrollView().
+    WithScrollBar(true).
+    WithTrackColor(latte.Hex("#444466")).
+    WithThumbColor(latte.ColorBrightCyan)
+```
+
+#### Nesting with Border
+
+Prefer `Border(ScrollView(VBox(…)))` over `ScrollView(Border(VBox(…)))`. In the first pattern the border chrome is fixed and only the VBox content scrolls. In the second pattern the entire Border (including its title row) scrolls — the top border disappears as the user scrolls down.
+
+```go
+// CORRECT — fixed border, scrolling content:
+panel := layout.NewBorder(
+    layout.NewVBox(items...).AsScrollView().WithScrollBar(true),
+).WithTitle("Items")
+
+// VALID but unusual — entire border scrolls:
+panel := layout.NewScrollView(
+    layout.NewBorder(layout.NewVBox(items...)).WithTitle("Items"),
+).WithScrollBar(true)
+```
+
+#### VFill / FlexChild inside ScrollView
+
+`VFill` and `FlexChild` behave differently depending on whether the content overflows the viewport:
+
+- **Content fits** (no scrolling) — the full viewport height is passed to the child, so flex children expand normally.
+- **Content overflows** (scrolling active) — the child is measured unconstrained and flex children collapse to zero height. Avoid `VFill` / `FlexChild` inside a `ScrollView` that is expected to scroll; use fixed-height children instead.
+
+#### Focus model
+
+`ScrollView` is always present in the Tab cycle. `HandleKey` returns `false` for all scroll keys when content fits the viewport, so arrow keys fall through to inter-widget focus cycling. When content overflows, `HandleKey` consumes `↑`/`↓` (±1 row), `PgUp`/`PgDn` (±viewport), and `Home`/`End` (jump to extremes).
+
+Do **not** implement `FocusGuard` on `ScrollView` — the focus tree is collected once at startup before any `Measure`/`Render` pass, so `contentH` and `viewportH` are both zero at collection time. A `FocusGuard` that checks `contentH > viewportH` would always return `false` at startup, permanently excluding the widget from Tab cycling.
+
+#### Scrollable interface
+
+```go
+sv.ScrollOffset() int          // current row offset
+sv.ContentHeight() int         // full unconstrained child height
+sv.ScrollTo(off int)           // set offset; clamped to [0, contentH-viewportH]
 ```
 
 ### Dialog
@@ -1072,8 +1156,10 @@ func main() {
 
 ## Constraints and invariants
 
-- Never call `Render` without having called `Measure` first in the same pass.
+- Never call `Render` without having called `Measure` first in the same pass. **Exception**: `HBox.Render` calls `Render` on flex children with `VAlignFill` without a preceding `Measure` call in the same frame. `ScrollView` handles this by re-measuring its child unconstrainedly at the start of its own `Render` to obtain the true `contentH`.
 - Never write to a `Buffer` outside the `Region` passed to `Render` — use `buf.Sub(region)` to get a clipped sub-buffer and write into that.
+- `Buffer` propagates the canvas background colour (`bg`) through `Sub`. Any cell drawn with `BG == ColorDefault` inherits this colour instead of the terminal default (typically black). Custom widgets do not need to explicitly fill a background unless they want a colour different from the canvas — `DrawText` with no `BG` set is always safe and visually correct on any theme.
+- `Buffer.Sub` separates coordinate translation (`originX`/`originY`) from write-guarding (`clip`). The origin may be negative (e.g. when `ScrollView` shifts child coordinates upward by the scroll offset); the clip is always the intersection of the requested region with the parent's clip and is never negative. Custom widgets that call `buf.Sub(region)` are unaffected by this distinction.
 - `BorderExplicitNone` (`-1`) actively suppresses a border. Check both `BorderNone` and `BorderExplicitNone` in render guards.
 - `Style.Merge` preserves `BorderExplicitNone` through the cascade — do not use direct struct assignment in `ApplyTheme`.
 - `Canvas.InvalidateLayout()` must be called after any dynamic addition or removal of components from the tree to re-collect focusable nodes.
