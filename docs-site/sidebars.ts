@@ -15,7 +15,16 @@ const sidebars: SidebarsConfig = {
             type: 'category',
             label: 'Layout',
             link: {type: 'doc', id: 'layout'},
-            items: [],
+            items: [
+                'layout/vbox-hbox',
+                'layout/border',
+                'layout/padding',
+                'layout/scrollview',
+                'layout/grid',
+                'layout/spacers',
+                'layout/flexchild',
+                'layout/alignchild',
+            ],
         },
         {
             type: 'category',
