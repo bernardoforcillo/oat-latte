@@ -239,11 +239,11 @@ func (a *App) buildLeft() oat.Component {
 
 	col := layout.NewVBox(
 		btnSection,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		cbSection,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		divSection,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		pbSection,
 	)
 	return layout.NewBorder(
@@ -527,14 +527,14 @@ func (a *App) showShowcaseDialog() {
 	body := layout.NewPadding(
 		layout.NewVBox(
 			titleText,
-			layout.NewVFill().WithMaxSize(1),
+			layout.NewVGap(1),
 			bullets,
-			layout.NewVFill().WithMaxSize(1),
+			layout.NewVGap(1),
 			div,
-			layout.NewVFill().WithMaxSize(1),
+			layout.NewVGap(1),
 			infoLeft,
 			infoRight,
-			layout.NewVFill().WithMaxSize(1),
+			layout.NewVGap(1),
 			closeCentered,
 		),
 		oat.Insets{Top: 1, Right: 2, Bottom: 1, Left: 2},

@@ -276,7 +276,7 @@ func (a *App) showNewNoteDialog() {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(createBtn)
 
 	dialogVBox := layout.NewVBox()
@@ -325,13 +325,13 @@ func (a *App) showDeleteDialog(note Note) {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(deleteBtn)
 
 	body := layout.NewPadding(layout.NewVBox(
 		msg,
 		hint,
-		layout.NewVFill().WithMaxSize(2),
+		layout.NewVGap(2),
 		btnRow,
 	), oat.Insets{Left: 1, Right: 1})
 

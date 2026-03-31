@@ -140,13 +140,13 @@ func (a *App) showNewDialog() {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(addBtn)
 
 	body := layout.NewPaddingUniform(layout.NewVBox(
 		nameInput,
 		roleInput,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		btnRow,
 	), 1)
 
@@ -170,13 +170,13 @@ func (a *App) showDeleteDialog(p Person, personIdx int) {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(deleteBtn)
 
 	body := layout.NewPaddingUniform(layout.NewVBox(
 		widget.NewText(fmt.Sprintf("Delete %q?", p.Name)),
 		widget.NewText("This action cannot be undone."),
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		btnRow,
 	), 1)
 
