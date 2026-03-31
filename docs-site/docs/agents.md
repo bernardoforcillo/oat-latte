@@ -22,7 +22,7 @@ Sub-packages:
 |---|---|
 | `github.com/antoniocali/oat-latte` | Core interfaces, `Canvas`, `Buffer`, `FocusManager`, geometry types |
 | `github.com/antoniocali/oat-latte/latte` | `Style`, `Color`, `BorderStyle`, `Theme`, built-in themes, named color palette |
-| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild`, `ScrollView` |
+| `github.com/antoniocali/oat-latte/layout` | `VBox`, `HBox`, `Grid`, `Stack`, `Border`, `Padding`, `VFill`, `HFill`, `FlexChild`, `AlignChild`, `ScrollView`, `VGap`, `HGap` |
 | `github.com/antoniocali/oat-latte/widget` | `Text`, `Title`, `Button`, `CheckBox`, `EditText`, `List`, `ComponentList`, `Label`, `ProgressBar`, `StatusBar`, `NotificationManager`, `Dialog`, `Divider` |
 
 ---
@@ -388,7 +388,7 @@ vbox := layout.NewVBox()
 vbox.AddChild(widget.NewText("Label"))
 vbox.AddFlexChild(editText, 1)          // flex weight 1 = share remaining space
 vbox.AddChild(layout.NewVFill())        // spacer; equivalent to AddFlexChild weight 1
-vbox.AddChild(layout.NewVFill().WithMaxSize(1))  // fixed 1-row gap
+vbox.AddChild(layout.NewVGap(1))        // fixed 1-row gap (always exactly 1 row)
 
 hbox := layout.NewHBox(child1, child2)  // variadic shorthand
 hbox.AddFlexChild(progressBar, 1)
@@ -414,6 +414,24 @@ hbox := layout.NewHBox(textA, textB).WithVAlign(oat.VAlignBottom)
 ```
 
 Zero value (`HAlignFill` / `VAlignFill`) is the default and preserves the previous full-stretch behaviour — no breaking change.
+
+### VGap / HGap
+
+Fixed-size inert spacers. Unlike `VFill`/`HFill`, they do not participate in flex distribution and always claim exactly `n` cells.
+
+```go
+// Fixed 1-row gap in a VBox — always exactly 1 row regardless of available space.
+vbox.AddChild(layout.NewVGap(1))
+
+// Fixed 2-column gap in an HBox — always exactly 2 columns.
+hbox.AddChild(layout.NewHGap(2))
+```
+
+Constructors: `layout.NewVGap(n int) *VGap`, `layout.NewHGap(n int) *HGap`. `n < 0` is clamped to `0`. `Render` is a no-op.
+
+**When to use VGap/HGap vs VFill.WithMaxSize/HFill.WithMaxSize:**
+- Use `VGap`/`HGap` when the gap must always be exactly `n` cells.
+- Use `VFill.WithMaxSize`/`HFill.WithMaxSize` when the gap should shrink gracefully if the container is small (capped flex spacer).
 
 ### FlexChild
 
@@ -1054,12 +1072,12 @@ func showConfirm(app *oat.Canvas, msg string, onConfirm func()) {
     btnRow := layout.NewHBox()
     btnRow.AddChild(layout.NewHFill())
     btnRow.AddChild(cancelBtn)
-    btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+    btnRow.AddChild(layout.NewHGap(2))
     btnRow.AddChild(okBtn)
 
     body := layout.NewPaddingUniform(layout.NewVBox(
         widget.NewText(msg),
-        layout.NewVFill().WithMaxSize(1),
+        layout.NewVGap(1),
         btnRow,
     ), 1)
 

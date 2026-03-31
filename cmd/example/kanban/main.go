@@ -199,13 +199,13 @@ func (a *App) showNewCardDialog() {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(createBtn)
 
 	body := layout.NewPaddingUniform(layout.NewVBox(
 		nameInput,
 		descInput,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		btnRow,
 	), 1)
 
@@ -250,13 +250,13 @@ func (a *App) showViewDialog(card Card) {
 	btnRow.AddChild(colLabel)
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(saveBtn)
 
 	body := layout.NewPaddingUniform(layout.NewVBox(
 		nameInput,
 		descInput,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		btnRow,
 	), 1)
 
@@ -290,12 +290,12 @@ func (a *App) showDeleteDialog(card Card) {
 	btnRow := layout.NewHBox()
 	btnRow.AddChild(layout.NewHFill())
 	btnRow.AddChild(cancelBtn)
-	btnRow.AddChild(layout.NewHFill().WithMaxSize(2))
+	btnRow.AddChild(layout.NewHGap(2))
 	btnRow.AddChild(deleteBtn)
 
 	body := layout.NewPaddingUniform(layout.NewVBox(
 		msg, hint,
-		layout.NewVFill().WithMaxSize(1),
+		layout.NewVGap(1),
 		btnRow,
 	), 1)
 

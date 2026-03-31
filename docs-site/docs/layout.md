@@ -153,7 +153,7 @@ For each child in a VBox or HBox, the effective alignment is resolved as follows
 // and the whole group is centred by wrapping in a VBox set to HAlignCenter.
 btnRow := layout.NewHBox(
     cancelBtn,
-    layout.NewHFill().WithMaxSize(2),
+    layout.NewHGap(2),
     okBtn,
 )
 
@@ -399,9 +399,45 @@ row.AddChild(leftLabel)
 row.AddChild(layout.NewHFill())   // fills the gap
 row.AddChild(rightLabel)
 
-// Fixed-size spacer (e.g. a 1-row vertical gap).
-vbox.AddChild(layout.NewVFill().WithMaxSize(1))
+// Capped flex spacer — grows up to 2 columns but yields if space is scarce.
+row.AddChild(layout.NewHFill().WithMaxSize(2))
 ```
+
+:::tip Prefer VGap / HGap for fixed gaps
+When you need a **guaranteed fixed gap** between two widgets, use `NewVGap(n)` or `NewHGap(n)` instead of `VFill.WithMaxSize` / `HFill.WithMaxSize`. The Gap types always occupy exactly `n` cells; the Fill types are capped flex spacers that can yield when space is tight.
+:::
+
+## VGap and HGap
+
+Fixed-size inert spacers. Unlike `VFill`/`HFill`, gap spacers do not participate in flex distribution — they always consume exactly `n` cells.
+
+```go
+// Exactly 1 row of vertical space between two widgets in a VBox.
+vbox := layout.NewVBox(
+    widget.NewText("Section A"),
+    layout.NewVGap(1),
+    widget.NewText("Section B"),
+)
+
+// Exactly 2 columns between two buttons in an HBox.
+btnRow := layout.NewHBox()
+btnRow.AddChild(layout.NewHFill())   // flex push to the right
+btnRow.AddChild(cancelBtn)
+btnRow.AddChild(layout.NewHGap(2))   // fixed 2-column gap
+btnRow.AddChild(okBtn)
+```
+
+| Type | Constructor | Axis | Measure result |
+|---|---|---|---|
+| `VGap` | `layout.NewVGap(n int) *VGap` | Vertical (VBox) | `Size{Width: 0, Height: n}` |
+| `HGap` | `layout.NewHGap(n int) *HGap` | Horizontal (HBox) | `Size{Width: n, Height: 0}` |
+
+`Render` is a no-op — both types are pure spacers with no visual output.
+
+**When to use VGap / HGap vs VFill.WithMaxSize / HFill.WithMaxSize:**
+
+- Use `VGap`/`HGap` when the gap must always be exactly `n` cells.
+- Use `VFill.WithMaxSize`/`HFill.WithMaxSize` when the gap should shrink gracefully if the container is small (e.g. dialogs that can resize).
 
 ## FlexChild
 

@@ -8,6 +8,46 @@ All notable changes to the oat-latte framework are listed here, newest first.
 
 ---
 
+## v0.3.0
+
+**`layout.VGap` / `layout.HGap` — fixed-size inert spacers · `layout` package file split**
+
+### Added
+
+- **`layout.VGap`** — a fixed-height inert spacer for use in `VBox`. Unlike `VFill`, it always occupies exactly `n` rows and does not participate in flex distribution.
+
+  - `layout.NewVGap(n int) *VGap` — constructor. `n < 0` is clamped to `0`.
+  - `Measure` returns `Size{Width: 0, Height: n}`.
+  - `Render` is a no-op.
+
+- **`layout.HGap`** — a fixed-width inert spacer for use in `HBox`. Always occupies exactly `n` columns.
+
+  - `layout.NewHGap(n int) *HGap` — constructor. `n < 0` is clamped to `0`.
+  - `Measure` returns `Size{Width: n, Height: 0}`.
+  - `Render` is a no-op.
+
+### Changed
+
+- **`layout` package file split** — the monolithic `layout/layout.go` (1 092 lines) has been split into focused per-type files. All types remain in `package layout`; the public API is completely unchanged.
+
+  | File | Contents |
+  |---|---|
+  | `layout/box.go` | `VBox`, `HBox`, `childSlot`, alignment helpers, `clamp`, `toOatInsets`, `containsFocus` |
+  | `layout/grid.go` | `Grid`, `GridChild` |
+  | `layout/stack.go` | `Stack` |
+  | `layout/border.go` | `Border` |
+  | `layout/padding.go` | `Padding` |
+  | `layout/spacer.go` | `FlexSpacer`, `VFill`, `HFill`, `FlexChild`, `AlignChild`, `VGap`, `HGap` |
+  | `layout/scroll.go` | `ScrollView` (unchanged) |
+
+- **Example apps** — all occurrences of `layout.NewVFill().WithMaxSize(n)` and `layout.NewHFill().WithMaxSize(n)` used as fixed gaps have been replaced with `layout.NewVGap(n)` / `layout.NewHGap(n)` in all five example apps (`tasklist`, `notes`, `kanban`, `people`, `showcase`).
+
+### Notes
+
+- `VFill.WithMaxSize` and `HFill.WithMaxSize` are **not** removed. They remain the correct tool for **capped flex spacers** (gaps that grow up to `n` cells but yield gracefully when space is scarce). `VGap`/`HGap` are the correct tool for **guaranteed fixed gaps**.
+
+---
+
 ## v0.2.9
 
 **`layout.ScrollView` — vertically scrollable layout container**
