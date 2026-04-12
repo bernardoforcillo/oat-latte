@@ -1,6 +1,8 @@
 package widget
 
 import (
+	"sync"
+
 	oat "github.com/antoniocali/oat-latte"
 	"github.com/antoniocali/oat-latte/latte"
 	"github.com/gdamore/tcell/v2"
@@ -34,6 +36,8 @@ type ComponentListItem struct {
 type ComponentList struct {
 	oat.BaseComponent
 	oat.FocusBehavior
+
+	mu sync.RWMutex
 
 	items          []ComponentListItem
 	selected       int // currently highlighted index
@@ -79,6 +83,9 @@ func NewComponentList(items []ComponentListItem) *ComponentList {
 		items:     items,
 		highlight: true,
 		cursor:    ">",
+	}
+	if len(items) == 0 {
+		l.selected = -1
 	}
 	l.EnsureID()
 	l.FocusStyle = latte.Style{
@@ -143,7 +150,16 @@ func (l *ComponentList) WithOnDelete(fn func(int, ComponentListItem)) *Component
 // via ApplyTheme, it is automatically re-applied to all new row components so
 // that items added after the canvas was constructed are styled consistently.
 func (l *ComponentList) SetItems(items []ComponentListItem) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	l.items = items
+	if len(items) == 0 {
+		l.selected = -1
+		l.scrollOff = 0
+		l.rowHeight = nil
+		return
+	}
 	if l.selected >= len(items) {
 		l.selected = len(items) - 1
 	}
@@ -227,6 +243,9 @@ func (l *ComponentList) WithVAlign(a ...oat.VAlign) *ComponentList {
 // Children returns a flat slice of all row components so the framework's
 // tree walkers (theme propagation, focus collection) recurse into them.
 func (l *ComponentList) Children() []oat.Component {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+
 	children := make([]oat.Component, len(l.items))
 	for i, item := range l.items {
 		children[i] = item.Component
@@ -237,15 +256,40 @@ func (l *ComponentList) Children() []oat.Component {
 // AddChild appends a new item whose Component is the supplied child.
 // Value is left nil; use SetItems when you need a non-nil Value.
 func (l *ComponentList) AddChild(child oat.Component) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	l.items = append(l.items, ComponentListItem{Component: child})
+	if len(l.items) == 1 {
+		l.selected = 0
+		l.scrollOff = 0
+	}
 	l.rowHeight = nil
 }
 
 // --- oat.Scrollable --------------------------------------------------------
 
-func (l *ComponentList) ScrollOffset() int  { return l.scrollOff }
-func (l *ComponentList) ContentHeight() int { return len(l.items) }
+func (l *ComponentList) ScrollOffset() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return l.scrollOff
+}
+
+func (l *ComponentList) ContentHeight() int {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return len(l.items)
+}
+
 func (l *ComponentList) ScrollTo(off int) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if len(l.items) == 0 {
+		l.scrollOff = 0
+		l.selected = -1
+		return
+	}
 	if off < 0 {
 		off = 0
 	}
@@ -262,6 +306,9 @@ func (l *ComponentList) ScrollTo(off int) {
 // total desired size. A cache of per-row heights is stored so Render can reuse
 // them without re-measuring.
 func (l *ComponentList) Measure(c oat.Constraint) oat.Size {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	style := l.EffectiveStyle(l.IsFocused())
 
 	borderInset := 0
@@ -282,6 +329,19 @@ func (l *ComponentList) Measure(c oat.Constraint) oat.Size {
 	}
 
 	rowC := oat.Constraint{MaxWidth: innerW, MaxHeight: -1}
+
+	if len(l.items) == 0 {
+		l.rowHeight = nil
+		totalH := pad.Vertical() + borderInset*2
+		if c.MaxHeight >= 0 && totalH > c.MaxHeight {
+			totalH = c.MaxHeight
+		}
+		w := c.MaxWidth
+		if w < 0 {
+			w = 20
+		}
+		return oat.Size{Width: w, Height: totalH}
+	}
 
 	l.rowHeight = make([]int, len(l.items))
 	totalH := 0
@@ -316,6 +376,9 @@ func (l *ComponentList) Measure(c oat.Constraint) oat.Size {
 // height. If the row is selected and highlight is enabled, the row's
 // background is filled with selectedStyle before delegating to the component.
 func (l *ComponentList) Render(buf *oat.Buffer, region oat.Region) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	style := l.EffectiveStyle(l.IsFocused())
 	sub := buf.Sub(region)
 	sub.FillBG(style)
@@ -362,6 +425,20 @@ func (l *ComponentList) Render(buf *oat.Buffer, region oat.Region) {
 		rowContentW = 0
 	}
 	rowC := oat.Constraint{MaxWidth: rowContentW, MaxHeight: -1}
+	if len(l.items) == 0 {
+		l.selected = -1
+		l.scrollOff = 0
+		return
+	}
+	if l.selected < 0 || l.selected >= len(l.items) {
+		l.selected = len(l.items) - 1
+	}
+	if l.scrollOff < 0 {
+		l.scrollOff = 0
+	}
+	if l.scrollOff >= len(l.items) {
+		l.scrollOff = len(l.items) - 1
+	}
 	if len(l.rowHeight) != len(l.items) {
 		l.rowHeight = make([]int, len(l.items))
 		for i, item := range l.items {
@@ -454,6 +531,9 @@ func (l *ComponentList) Render(buf *oat.Buffer, region oat.Region) {
 // original callerStyle so that repeated calls (e.g. on theme switch) correctly
 // replace the previous theme's colours rather than accumulating stale values.
 func (l *ComponentList) ApplyTheme(t latte.Theme) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
 	l.lastTheme = &t
 	l.Style = t.Text.Merge(l.callerStyle)
 	l.FocusStyle = latte.Style{BorderFG: t.FocusBorder}
@@ -462,30 +542,36 @@ func (l *ComponentList) ApplyTheme(t latte.Theme) {
 }
 
 func (l *ComponentList) HandleKey(ev *oat.KeyEvent) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	if len(l.items) == 0 {
+		return false
+	}
 	switch ev.Key() {
 	case tcell.KeyUp:
 		if l.selected > 0 {
-			l.moveCursor(l.selected - 1)
+			l.moveCursorLocked(l.selected - 1)
 		}
 		return true
 	case tcell.KeyDown:
 		if l.selected < len(l.items)-1 {
-			l.moveCursor(l.selected + 1)
+			l.moveCursorLocked(l.selected + 1)
 		}
 		return true
 	case tcell.KeyHome, tcell.KeyCtrlA:
-		l.moveCursor(0)
+		l.moveCursorLocked(0)
 		return true
 	case tcell.KeyEnd, tcell.KeyCtrlE:
-		l.moveCursor(len(l.items) - 1)
+		l.moveCursorLocked(len(l.items) - 1)
 		return true
 	case tcell.KeyEnter:
-		if l.onSelect != nil && l.selected < len(l.items) {
+		if l.onSelect != nil && l.selected >= 0 && l.selected < len(l.items) {
 			l.onSelect(l.selected, l.items[l.selected])
 		}
 		return true
 	case tcell.KeyDelete:
-		if l.onDelete != nil && l.selected < len(l.items) {
+		if l.onDelete != nil && l.selected >= 0 && l.selected < len(l.items) {
 			l.onDelete(l.selected, l.items[l.selected])
 		}
 		return true
@@ -494,7 +580,7 @@ func (l *ComponentList) HandleKey(ev *oat.KeyEvent) bool {
 }
 
 // moveCursor updates the selected index and fires onCursorChange if registered.
-func (l *ComponentList) moveCursor(idx int) {
+func (l *ComponentList) moveCursorLocked(idx int) {
 	if idx < 0 {
 		idx = 0
 	}
