@@ -43,6 +43,9 @@ run-kanban:  ## Run the Kanban example app
 run-tasklist: ## Run the Task List example app
 	go run ./cmd/example/tasklist
 
+run-reactive: ## Run the Reactive (Flutter-like) example app
+	go run ./cmd/example/reactive
+
 # ── Cleanup ────────────────────────────────────────────────────────
 
 clean:       ## Remove Go build artifacts

@@ -51,6 +51,12 @@ type Canvas struct {
 	// are removed from the screen without requiring a key event.
 	notifyCh chan time.Time
 
+	// redrawCh is signalled by Redraw() to schedule an explicit re-render from
+	// outside the normal key-event flow (e.g. background goroutines, timers).
+	// Buffered with capacity 1 so multiple concurrent calls coalesce into a
+	// single render — only one pending signal is ever needed.
+	redrawCh chan struct{}
+
 	// globalBindings are key bindings that fire regardless of which component
 	// currently holds focus.  They are checked after the focused component has
 	// had a chance to handle the key, so a focused widget can still shadow a
@@ -188,6 +194,7 @@ func NewCanvas(opts ...CanvasOption) *Canvas {
 		focus:    NewFocusManager(),
 		quit:     make(chan struct{}),
 		notifyCh: make(chan time.Time, 8),
+		redrawCh: make(chan struct{}, 1),
 	}
 	for _, opt := range opts {
 		opt(cv)
@@ -216,6 +223,25 @@ func (cv *Canvas) Quit() {
 	case <-cv.quit:
 	default:
 		close(cv.quit)
+	}
+}
+
+// Redraw schedules an explicit screen refresh and focus-tree rebuild.
+// It is safe to call from any goroutine — including background goroutines,
+// timers, and network callbacks.
+//
+// Use this as the redrawFn for State or ValueNotifier when state changes can
+// originate outside the Canvas event loop:
+//
+//	state := oat.NewState(MyState{}, canvas.Redraw)
+//
+// If state is only ever mutated inside UI event handlers (button presses, key
+// bindings), you do not need Redraw — the Canvas re-renders automatically
+// after every key event.
+func (cv *Canvas) Redraw() {
+	select {
+	case cv.redrawCh <- struct{}{}:
+	default:
 	}
 }
 
@@ -352,6 +378,14 @@ func (cv *Canvas) Run() error {
 		case <-cv.notifyCh:
 			// A notification timer fired — re-render so expired notifications
 			// are removed from the display without waiting for a key event.
+			cv.render()
+			screen.Show()
+		case <-cv.redrawCh:
+			// An explicit redraw was requested (e.g. from a background goroutine
+			// via State.SetState or ValueNotifier.Set). Rebuild the focus tree first
+			// so any structural tree changes (new/removed focusable widgets) are
+			// reflected before rendering.
+			cv.InvalidateLayout()
 			cv.render()
 			screen.Show()
 		case ev := <-eventCh:
