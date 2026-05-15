@@ -1,0 +1,32 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - revive
+    - misspell
+    - unconvert
+    - unused
+    - copylock
+    - godot
+
+linters-settings:
+  revive:
+    rules:
+      - name: exported
+        arguments:
+          - disableStutteringCheck
+  godot:
+    scope: declarations
+    capital: false
+
+issues:
+  exclude-rules:
+    # Example apps are allowed looser style
+    - path: "cmd/"
+      linters: [revive, errcheck]
+    # Test files are exempt from some rules
+    - path: "_test\\.go"
+      linters: [errcheck, godot]

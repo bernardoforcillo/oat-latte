@@ -1,4 +1,4 @@
-.PHONY: build test cover vet fmt check clean run-notes run-kanban run-tasklist \
+.PHONY: build test cover vet fmt lint check clean run-notes run-kanban run-tasklist \
         docs-install docs-start docs-build docs-serve docs-clean help
 
 # ANSI colours
@@ -18,7 +18,7 @@ test:        ## Run all tests
 	go test ./...
 
 cover:       ## Run tests and open HTML coverage report
-	go test -coverprofile=coverage.txt ./...
+	go test -coverprofile=coverage.txt $(shell go list ./... | grep -v '/cmd/')
 	go tool cover -html=coverage.txt -o coverage.html
 
 vet:         ## Run go vet
@@ -27,7 +27,10 @@ vet:         ## Run go vet
 fmt:         ## Format all source files
 	go fmt ./...
 
-check: fmt vet test  ## Run fmt, vet, and test
+lint:        ## Run golangci-lint (requires golangci-lint to be installed)
+	golangci-lint run ./...
+
+check: fmt vet lint test  ## Run fmt, vet, lint, and test
 
 # ── Examples ───────────────────────────────────────────────────────
 
