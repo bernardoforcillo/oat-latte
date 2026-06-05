@@ -13,6 +13,7 @@ import (
 type Button struct {
 	oat.BaseComponent
 	oat.FocusBehavior
+	oat.BaseHitRegion
 	label            string
 	onPress          func()
 	roundedCorner    bool // effective value used at render time
@@ -117,12 +118,22 @@ func (b *Button) Measure(c oat.Constraint) oat.Size {
 	return oat.Size{Width: w, Height: h}
 }
 
+// HandleMouse invokes the press handler on a left-click, satisfying oat.MouseHandler.
+func (b *Button) HandleMouse(ev *oat.MouseEvent) bool {
+	if ev.Buttons()&tcell.Button1 != 0 && b.onPress != nil {
+		b.onPress()
+		return true
+	}
+	return false
+}
+
 func (b *Button) Render(buf *oat.Buffer, region oat.Region) {
 	// EffectiveStyle provides the colour/attribute overrides for the current
 	// focus state, but border presence (shape) is always from b.Style so that
 	// the layout is stable regardless of focus.
 	style := b.EffectiveStyle(b.IsFocused())
 	sub := buf.Sub(region)
+	b.SetHitRegion(sub.Region()) // register for mouse hit-testing
 	sub.FillBG(style)
 
 	hasBorder := b.Style.Border != latte.BorderNone && b.Style.Border != latte.BorderExplicitNone

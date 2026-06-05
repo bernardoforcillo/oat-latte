@@ -404,6 +404,9 @@ func (cv *Canvas) handleEvent(ev tcell.Event) bool {
 		cv.screen.Sync()
 		return true
 
+	case *tcell.EventMouse:
+		return cv.handleMouse(e)
+
 	case *tcell.EventKey:
 		// Global quit bindings.
 		if e.Key() == tcell.KeyCtrlC {
@@ -706,6 +709,46 @@ func (cv *Canvas) SetTheme(t latte.Theme) {
 	for _, o := range cv.persistentOverlays {
 		applyThemeTree(o, t)
 	}
+}
+
+// handleMouse dispatches a mouse event. Returns true if a re-render is needed.
+//
+// Left-click (Button1): find the topmost focusable component under the cursor
+// via HitTrackable, move focus to it, then optionally dispatch a HandleMouse
+// call if the component also implements MouseHandler.
+//
+// Scroll wheel (WheelUp/WheelDown): forward to the currently focused component
+// if it implements MouseHandler.
+func (cv *Canvas) handleMouse(ev *tcell.EventMouse) bool {
+	mx, my := ev.Position()
+	btn := ev.Buttons()
+
+	// Left-click: click-to-focus.
+	if btn&tcell.Button1 != 0 {
+		for _, node := range cv.focus.Nodes() {
+			ht, ok := node.(HitTrackable)
+			if !ok || !ht.ContainsScreenPos(mx, my) {
+				continue
+			}
+			cv.focus.FocusByRef(node)
+			cv.updateStatusBar()
+			if mh, ok2 := node.(MouseHandler); ok2 {
+				mh.HandleMouse(ev)
+			}
+			return true
+		}
+	}
+
+	// Scroll wheel: forward to the focused component.
+	if btn&tcell.WheelUp != 0 || btn&tcell.WheelDown != 0 {
+		if focused := cv.focus.Current(); focused != nil {
+			if mh, ok := focused.(MouseHandler); ok {
+				return mh.HandleMouse(ev)
+			}
+		}
+	}
+
+	return false
 }
 
 // GetTheme returns a pointer to the active theme. The pointer is the same

@@ -21,6 +21,49 @@ type KeyEvent = tcell.EventKey
 // MouseEvent wraps a tcell.EventMouse for use in component handlers.
 type MouseEvent = tcell.EventMouse
 
+// MouseHandler is an opt-in interface for components that want to handle
+// mouse events (clicks, scroll wheel, drag).
+// Canvas dispatches mouse events to any component in the focus tree that
+// implements this interface and whose screen region contains the cursor.
+type MouseHandler interface {
+	// HandleMouse is called when a mouse event occurs within the component's
+	// last rendered region. Return true if the event was consumed.
+	HandleMouse(ev *MouseEvent) bool
+}
+
+// HitTrackable is an opt-in interface for components that track their own
+// rendered screen region for mouse hit-testing.
+// Embed BaseHitRegion to satisfy this interface automatically.
+type HitTrackable interface {
+	// ContainsScreenPos reports whether absolute screen position (x, y) lies
+	// within the component's last rendered bounding box.
+	ContainsScreenPos(x, y int) bool
+}
+
+// BaseHitRegion is a mixin that components can embed to gain automatic
+// mouse hit-testing.  Call SetHitRegion(sub.Region()) inside Render
+// (after creating the sub-buffer) to keep the tracked region up to date.
+//
+//	func (b *Button) Render(buf *oat.Buffer, region oat.Region) {
+//	    sub := buf.Sub(region)
+//	    b.SetHitRegion(sub.Region())   // register absolute position
+//	    // … draw …
+//	}
+type BaseHitRegion struct {
+	hitRegion Region
+}
+
+// SetHitRegion records the component's current absolute screen region.
+// Pass sub.Region() (the value returned by Buffer.Region after buf.Sub)
+// to get the correct absolute coordinates.
+func (h *BaseHitRegion) SetHitRegion(r Region) { h.hitRegion = r }
+
+// ContainsScreenPos satisfies HitTrackable.
+func (h *BaseHitRegion) ContainsScreenPos(x, y int) bool {
+	r := h.hitRegion
+	return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height
+}
+
 // Component is the fundamental building block of an oat-latte UI.
 // Every widget, layout, and container implements Component.
 //

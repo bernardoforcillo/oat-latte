@@ -27,6 +27,7 @@ import (
 type EditText struct {
 	oat.BaseComponent
 	oat.FocusBehavior
+	oat.BaseHitRegion
 
 	lines       []string // internal line buffer
 	cursorRow   int
@@ -299,6 +300,7 @@ func (e *EditText) Measure(c oat.Constraint) oat.Size {
 func (e *EditText) Render(buf *oat.Buffer, region oat.Region) {
 	style := e.EffectiveStyle(e.IsFocused())
 	sub := buf.Sub(region)
+	e.SetHitRegion(sub.Region())
 	sub.FillBG(style)
 
 	// Border inset: when a border is drawn it occupies the outermost cell on

@@ -1,4 +1,5 @@
 .PHONY: build test cover vet fmt lint check clean run-notes run-kanban run-tasklist \
+        run-reactive run-newwidgets \
         docs-install docs-start docs-build docs-serve docs-clean help
 
 # ANSI colours
@@ -45,6 +46,9 @@ run-tasklist: ## Run the Task List example app
 
 run-reactive: ## Run the Reactive (Flutter-like) example app
 	go run ./cmd/example/reactive
+
+run-newwidgets: ## Run the new-widgets showcase (Tabs, Table, TreeView, Charts…)
+	go run ./cmd/example/newwidgets
 
 # ── Cleanup ────────────────────────────────────────────────────────
 
