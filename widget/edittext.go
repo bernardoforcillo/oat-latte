@@ -245,6 +245,24 @@ func (e *EditText) HandleKey(ev *oat.KeyEvent) bool {
 		e.cursorCol = 0
 		e.notifyChange()
 		return true
+	case tcell.KeyCtrlC:
+		// Copy full text to system clipboard (no-op if clipboard unavailable).
+		_ = oat.SetClipboard(e.GetText())
+		return true
+	case tcell.KeyCtrlV:
+		// Paste from system clipboard, inserting at the current cursor position.
+		if text, err := oat.GetClipboard(); err == nil {
+			for _, r := range []rune(text) {
+				if r == '\n' {
+					if e.multiLine {
+						e.splitLine()
+					}
+				} else {
+					e.insertRune(r)
+				}
+			}
+		}
+		return true
 	}
 	return false
 }
@@ -256,6 +274,8 @@ func (e *EditText) KeyBindings() []oat.KeyBinding {
 		{Key: tcell.KeyCtrlE, Label: "^E", Description: "End"},
 		{Key: tcell.KeyCtrlK, Label: "^K", Description: "Kill line"},
 		{Key: tcell.KeyCtrlU, Label: "^U", Description: "Clear"},
+		{Key: tcell.KeyCtrlC, Label: "^C", Description: "Copy"},
+		{Key: tcell.KeyCtrlV, Label: "^V", Description: "Paste"},
 	}
 	if e.onSave != nil {
 		bindings = append([]oat.KeyBinding{

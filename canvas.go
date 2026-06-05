@@ -62,6 +62,11 @@ type Canvas struct {
 	// had a chance to handle the key, so a focused widget can still shadow a
 	// global binding when that is the desired behaviour (e.g. Esc in EditText).
 	globalBindings []KeyBinding
+
+	// crashHandler is called with the recovered value when Run's event loop
+	// panics. The tcell screen is always Fini'd before the handler runs so the
+	// terminal is left in a clean state. nil = no recovery (panics propagate).
+	crashHandler func(interface{})
 }
 
 // statusBarSetter is the interface StatusBar satisfies so Canvas can update it
@@ -298,6 +303,31 @@ func (cv *Canvas) ShowPersistentOverlay(d Component) {
 // HasOverlay reports whether any overlay is currently displayed.
 func (cv *Canvas) HasOverlay() bool { return len(cv.overlays) > 0 }
 
+// SetClipboard writes text to the system clipboard.
+// Delegates to the package-level SetClipboard function.
+func (cv *Canvas) SetClipboard(text string) error { return SetClipboard(text) }
+
+// GetClipboard reads text from the system clipboard.
+// Delegates to the package-level GetClipboard function.
+func (cv *Canvas) GetClipboard() (string, error) { return GetClipboard() }
+
+// WithCrashRecovery sets a handler invoked when the Canvas event loop panics.
+// The tcell screen is restored before the handler is called, leaving the
+// terminal in a clean state. The handler receives recover()'s return value.
+// If not set, panics propagate normally.
+//
+// Typical usage — log the crash and show a user-friendly message:
+//
+//	canvas := oat.NewCanvas(
+//	    oat.WithCrashRecovery(func(v interface{}) {
+//	        fmt.Fprintf(os.Stderr, "crash: %v\n", v)
+//	    }),
+//	    …
+//	)
+func WithCrashRecovery(fn func(interface{})) CanvasOption {
+	return func(cv *Canvas) { cv.crashHandler = fn }
+}
+
 // FocusByRef moves keyboard focus to the first Focusable node in the current
 // focus tree that is pointer-identical to target.
 // This lets application code direct focus to a specific widget in response to
@@ -319,6 +349,15 @@ func (cv *Canvas) Run() error {
 		return err
 	}
 	defer screen.Fini()
+
+	// Install crash recovery after Fini so the terminal is always restored.
+	if cv.crashHandler != nil {
+		defer func() {
+			if r := recover(); r != nil {
+				cv.crashHandler(r)
+			}
+		}()
+	}
 
 	screen.EnableMouse()
 	screen.Clear()
