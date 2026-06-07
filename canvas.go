@@ -70,8 +70,11 @@ type Canvas struct {
 	crashHandler func(interface{})
 
 	// helpKey, when non-zero, opens the built-in key-binding help overlay.
-	helpKey tcell.Key
+	helpKey  tcell.Key
 	helpRune rune
+
+	// resizeHandlers are called whenever the terminal is resized.
+	resizeHandlers []func(width, height int)
 }
 
 // statusBarSetter is the interface StatusBar satisfies so Canvas can update it
@@ -465,6 +468,12 @@ func (cv *Canvas) handleEvent(ev tcell.Event) bool {
 	switch e := ev.(type) {
 	case *tcell.EventResize:
 		cv.screen.Sync()
+		if len(cv.resizeHandlers) > 0 {
+			w, h := cv.screen.Size()
+			for _, fn := range cv.resizeHandlers {
+				fn(w, h)
+			}
+		}
 		return true
 
 	case *tcell.EventMouse:
@@ -833,6 +842,164 @@ func (cv *Canvas) handleMouse(ev *tcell.EventMouse) bool {
 func (cv *Canvas) GetTheme() *latte.Theme {
 	return cv.theme
 }
+
+// OnResize registers fn to be called whenever the terminal is resized.
+// Multiple handlers can be registered; all are called in registration order.
+// fn receives the new terminal width and height in cells.
+func (cv *Canvas) OnResize(fn func(width, height int)) {
+	cv.resizeHandlers = append(cv.resizeHandlers, fn)
+}
+
+// Size returns the current terminal dimensions in cells.
+// Returns (0,0) before Run() is called.
+func (cv *Canvas) Size() (width, height int) {
+	if cv.screen == nil {
+		return 0, 0
+	}
+	return cv.screen.Size()
+}
+
+// ShowContextMenu opens a lightweight popup menu at the given screen position.
+// It is dismissed automatically when the user makes a selection or presses Esc.
+// items is a slice of (label, action) pairs; a nil action renders a separator.
+func (cv *Canvas) ShowContextMenu(items []ContextMenuItem, screenX, screenY int) {
+	var theme latte.Theme
+	if cv.theme != nil {
+		theme = *cv.theme
+	}
+	cm := &contextMenuOverlay{
+		items:   items,
+		x:       screenX,
+		y:       screenY,
+		theme:   theme,
+		dismiss: cv.HideDialog,
+	}
+	cv.ShowDialog(cm)
+}
+
+// ContextMenuItem is one entry in a context menu opened via ShowContextMenu.
+type ContextMenuItem struct {
+	Label  string  // empty = separator
+	Action func()
+}
+
+// contextMenuOverlay renders a floating popup menu at a fixed screen position.
+type contextMenuOverlay struct {
+	BaseComponent
+	items   []ContextMenuItem
+	x, y    int
+	cursor  int
+	theme   latte.Theme
+	dismiss func()
+
+	// Screen coords of the rendered box (for mouse handling).
+	renderX, renderY, renderW, renderH int
+}
+
+func (c *contextMenuOverlay) Measure(con Constraint) Size { return Size{} }
+
+func (c *contextMenuOverlay) Render(buf *Buffer, region Region) {
+	items := c.items
+	dropW := 24
+	for _, item := range items {
+		if n := len([]rune(item.Label)) + 4; n > dropW {
+			dropW = n
+		}
+	}
+	dropH := len(items)
+	if dropH == 0 {
+		return
+	}
+
+	// Clamp position to screen.
+	bx := c.x
+	by := c.y
+	if bx+dropW > region.Width {
+		bx = region.Width - dropW
+	}
+	if by+dropH > region.Height {
+		by = region.Height - dropH
+	}
+	if bx < 0 {
+		bx = 0
+	}
+	if by < 0 {
+		by = 0
+	}
+
+	c.renderX, c.renderY, c.renderW, c.renderH = bx, by, dropW, dropH
+
+	panelStyle := c.theme.Panel
+	if panelStyle == (latte.Style{}) {
+		panelStyle = latte.Style{FG: latte.Hex("#eeeeee"), BG: latte.Hex("#333333")}
+	}
+	selStyle := c.theme.Accent
+	mutedStyle := c.theme.Muted
+
+	sub := buf.Sub(Region{X: region.X + bx, Y: region.Y + by, Width: dropW, Height: dropH})
+	sub.FillBG(panelStyle)
+
+	for row, item := range items {
+		if item.Label == "" {
+			for x := 0; x < dropW; x++ {
+				sub.SetCell(x, row, '─', mutedStyle)
+			}
+			continue
+		}
+		st := panelStyle
+		if row == c.cursor {
+			st = selStyle
+		}
+		label := " " + item.Label
+		runes := []rune(label)
+		for len(runes) < dropW {
+			runes = append(runes, ' ')
+		}
+		if len(runes) > dropW {
+			runes = runes[:dropW]
+		}
+		sub.DrawText(0, row, string(runes), st)
+	}
+}
+
+func (c *contextMenuOverlay) HandleKey(ev *KeyEvent) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		c.moveCursor(-1)
+		return true
+	case tcell.KeyDown:
+		c.moveCursor(1)
+		return true
+	case tcell.KeyEnter:
+		c.activate()
+		return true
+	}
+	return false
+}
+
+func (c *contextMenuOverlay) moveCursor(d int) {
+	n := len(c.items)
+	for i := 1; i <= n; i++ {
+		next := (c.cursor + d*i + n*i) % n
+		if c.items[next].Label != "" {
+			c.cursor = next
+			return
+		}
+	}
+}
+
+func (c *contextMenuOverlay) activate() {
+	if c.cursor < len(c.items) {
+		item := c.items[c.cursor]
+		c.dismiss()
+		if item.Action != nil {
+			item.Action()
+		}
+	}
+}
+
+func (c *contextMenuOverlay) Children() []Component { return nil }
+func (c *contextMenuOverlay) AddChild(_ Component)  {}
 
 // ── Help overlay ──────────────────────────────────────────────────────────────
 

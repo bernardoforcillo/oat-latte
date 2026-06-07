@@ -43,13 +43,19 @@ type EditText struct {
 	onSave   func(text string)
 	onCancel func()
 
-	// callerStyle and callerFocusStyle preserve the styles set by the caller
-	// (via WithStyle) before any theme application. ApplyTheme always merges
-	// the current theme token with these originals so that switching themes
-	// fully replaces the previous theme's colours rather than accumulating
-	// stale values from the prior theme.
+	// Undo/redo stacks — each entry is a snapshot of (lines, cursorRow, cursorCol).
+	undoStack []editSnapshot
+	redoStack []editSnapshot
+
 	callerStyle      latte.Style
 	callerFocusStyle latte.Style
+}
+
+// editSnapshot captures the full editor state for undo/redo.
+type editSnapshot struct {
+	lines     []string
+	cursorRow int
+	cursorCol int
 }
 
 // NewEditText creates a single-line text input.
@@ -245,6 +251,12 @@ func (e *EditText) HandleKey(ev *oat.KeyEvent) bool {
 		e.cursorCol = 0
 		e.notifyChange()
 		return true
+	case tcell.KeyCtrlZ:
+		e.undo()
+		return true
+	case tcell.KeyCtrlY:
+		e.redo()
+		return true
 	case tcell.KeyCtrlC:
 		// Copy full text to system clipboard (no-op if clipboard unavailable).
 		_ = oat.SetClipboard(e.GetText())
@@ -274,6 +286,8 @@ func (e *EditText) KeyBindings() []oat.KeyBinding {
 		{Key: tcell.KeyCtrlE, Label: "^E", Description: "End"},
 		{Key: tcell.KeyCtrlK, Label: "^K", Description: "Kill line"},
 		{Key: tcell.KeyCtrlU, Label: "^U", Description: "Clear"},
+		{Key: tcell.KeyCtrlZ, Label: "^Z", Description: "Undo"},
+		{Key: tcell.KeyCtrlY, Label: "^Y", Description: "Redo"},
 		{Key: tcell.KeyCtrlC, Label: "^C", Description: "Copy"},
 		{Key: tcell.KeyCtrlV, Label: "^V", Description: "Paste"},
 	}
@@ -419,6 +433,7 @@ func (e *EditText) insertRune(r rune) {
 	if e.maxLength > 0 && len(line) >= e.maxLength {
 		return
 	}
+	e.pushUndo()
 	newLine := make([]rune, 0, len(line)+1)
 	newLine = append(newLine, line[:e.cursorCol]...)
 	newLine = append(newLine, r)
@@ -430,12 +445,14 @@ func (e *EditText) insertRune(r rune) {
 
 func (e *EditText) deleteBackward() {
 	if e.cursorCol > 0 {
+		e.pushUndo()
 		line := []rune(e.lines[e.cursorRow])
 		newLine := append(line[:e.cursorCol-1], line[e.cursorCol:]...)
 		e.lines[e.cursorRow] = string(newLine)
 		e.cursorCol--
 		e.notifyChange()
 	} else if e.multiLine && e.cursorRow > 0 {
+		e.pushUndo()
 		// Merge with previous line.
 		prev := e.lines[e.cursorRow-1]
 		cur := e.lines[e.cursorRow]
@@ -498,4 +515,53 @@ func (e *EditText) notifyChange() {
 	if e.onChange != nil {
 		e.onChange(e.GetText())
 	}
+}
+
+// ── undo/redo ─────────────────────────────────────────────────────────────────
+
+const maxUndoDepth = 200
+
+// pushUndo saves a snapshot before a mutating operation.
+func (e *EditText) pushUndo() {
+	snap := e.snapshot()
+	e.undoStack = append(e.undoStack, snap)
+	if len(e.undoStack) > maxUndoDepth {
+		e.undoStack = e.undoStack[1:]
+	}
+	e.redoStack = e.redoStack[:0] // any new edit clears redo
+}
+
+func (e *EditText) snapshot() editSnapshot {
+	cp := make([]string, len(e.lines))
+	copy(cp, e.lines)
+	return editSnapshot{lines: cp, cursorRow: e.cursorRow, cursorCol: e.cursorCol}
+}
+
+func (e *EditText) restore(snap editSnapshot) {
+	e.lines = snap.lines
+	e.cursorRow = snap.cursorRow
+	e.cursorCol = snap.cursorCol
+	e.notifyChange()
+}
+
+func (e *EditText) undo() bool {
+	if len(e.undoStack) == 0 {
+		return false
+	}
+	e.redoStack = append(e.redoStack, e.snapshot())
+	snap := e.undoStack[len(e.undoStack)-1]
+	e.undoStack = e.undoStack[:len(e.undoStack)-1]
+	e.restore(snap)
+	return true
+}
+
+func (e *EditText) redo() bool {
+	if len(e.redoStack) == 0 {
+		return false
+	}
+	e.undoStack = append(e.undoStack, e.snapshot())
+	snap := e.redoStack[len(e.redoStack)-1]
+	e.redoStack = e.redoStack[:len(e.redoStack)-1]
+	e.restore(snap)
+	return true
 }
