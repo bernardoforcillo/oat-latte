@@ -1,6 +1,7 @@
 package oat
 
 import (
+	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
@@ -67,6 +68,10 @@ type Canvas struct {
 	// panics. The tcell screen is always Fini'd before the handler runs so the
 	// terminal is left in a clean state. nil = no recovery (panics propagate).
 	crashHandler func(interface{})
+
+	// helpKey, when non-zero, opens the built-in key-binding help overlay.
+	helpKey tcell.Key
+	helpRune rune
 }
 
 // statusBarSetter is the interface StatusBar satisfies so Canvas can update it
@@ -190,6 +195,24 @@ func WithNotificationManager(nm NotificationOverlay) CanvasOption {
 	return func(cv *Canvas) {
 		nm.SetNotifyChannel(cv.notifyCh)
 		cv.persistentOverlays = append(cv.persistentOverlays, nm)
+	}
+}
+
+// WithHelpKey registers a key that opens the built-in help overlay listing all
+// key bindings currently active in the component tree. Pass tcell.KeyF1 or
+// tcell.KeyRune + '?' as common choices.
+//
+// Example — open help with F1:
+//
+//	oat.WithHelpKey(tcell.KeyF1, 0)
+//
+// Example — open help with '?':
+//
+//	oat.WithHelpKey(tcell.KeyRune, '?')
+func WithHelpKey(key tcell.Key, r rune) CanvasOption {
+	return func(cv *Canvas) {
+		cv.helpKey = key
+		cv.helpRune = r
 	}
 }
 
@@ -452,6 +475,16 @@ func (cv *Canvas) handleEvent(ev tcell.Event) bool {
 		if e.Key() == tcell.KeyCtrlC {
 			cv.Quit()
 			return false
+		}
+
+		// Help overlay.
+		if cv.helpKey != 0 && e.Key() == cv.helpKey {
+			if cv.helpKey != tcell.KeyRune || e.Rune() == cv.helpRune {
+				if !cv.HasOverlay() {
+					cv.showHelpOverlay()
+					return true
+				}
+			}
 		}
 
 		// Escape: dismiss topmost overlay if one is open; otherwise quit.
@@ -799,4 +832,181 @@ func (cv *Canvas) handleMouse(ev *tcell.EventMouse) bool {
 // WithTheme and SetTheme has never been called).
 func (cv *Canvas) GetTheme() *latte.Theme {
 	return cv.theme
+}
+
+// ── Help overlay ──────────────────────────────────────────────────────────────
+
+// showHelpOverlay collects all key bindings from the component tree and opens
+// a modal dialog showing them. Dismissed with Esc like any other overlay.
+func (cv *Canvas) showHelpOverlay() {
+	var bindings []KeyBinding
+	collectBindings(cv.body, &bindings)
+	collectBindings(cv.header, &bindings)
+	collectBindings(cv.footer, &bindings)
+	bindings = append(bindings, cv.globalBindings...)
+	bindings = append(bindings,
+		KeyBinding{Key: tcell.KeyTab, Label: "Tab", Description: "Next field"},
+		KeyBinding{Key: tcell.KeyBacktab, Label: "Shift+Tab", Description: "Prev field"},
+		KeyBinding{Key: tcell.KeyEscape, Label: "Esc", Description: "Quit / close"},
+		KeyBinding{Key: tcell.KeyCtrlC, Label: "^C", Description: "Quit"},
+	)
+	dedup := dedupBindings(bindings)
+
+	var theme latte.Theme
+	if cv.theme != nil {
+		theme = *cv.theme
+	}
+	cv.ShowDialog(&helpOverlay{bindings: dedup, theme: theme})
+}
+
+// collectBindings recursively gathers KeyBindings from the component tree.
+func collectBindings(c Component, out *[]KeyBinding) {
+	if c == nil {
+		return
+	}
+	if kb, ok := c.(interface{ KeyBindings() []KeyBinding }); ok {
+		*out = append(*out, kb.KeyBindings()...)
+	}
+	if l, ok := c.(Layout); ok {
+		for _, child := range l.Children() {
+			collectBindings(child, out)
+		}
+	}
+}
+
+// dedupBindings removes exact duplicates (same Label+Description).
+func dedupBindings(in []KeyBinding) []KeyBinding {
+	seen := map[string]bool{}
+	out := make([]KeyBinding, 0, len(in))
+	for _, b := range in {
+		key := b.Label + "|" + b.Description
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, b)
+		}
+	}
+	return out
+}
+
+// helpOverlay is a simple built-in component that renders a centred box
+// listing all key bindings. It doesn't import widget to avoid import cycles.
+type helpOverlay struct {
+	BaseComponent
+	bindings []KeyBinding
+	theme    latte.Theme
+	scroll   int
+}
+
+func (h *helpOverlay) Measure(c Constraint) Size { return c.Clamp(Size{Width: 50, Height: 20}) }
+
+func (h *helpOverlay) Render(buf *Buffer, region Region) {
+	boxW := 52
+	boxH := len(h.bindings) + 6
+	if boxH > region.Height-4 {
+		boxH = region.Height - 4
+	}
+	if boxW > region.Width-4 {
+		boxW = region.Width - 4
+	}
+	boxX := (region.Width - boxW) / 2
+	boxY := (region.Height - boxH) / 2
+
+	// Dim the background with a dark scrim.
+	scrimStyle := latte.Style{BG: latte.Hex("#111111")}
+	for y := 0; y < region.Height; y++ {
+		for x := 0; x < region.Width; x++ {
+			buf.SetCell(region.X+x, region.Y+y, ' ', scrimStyle)
+		}
+	}
+
+	panelStyle := h.theme.Panel
+	if panelStyle == (latte.Style{}) {
+		panelStyle = latte.Style{FG: latte.Hex("#ffffff"), BG: latte.Hex("#222222")}
+	}
+	headerStyle := h.theme.Accent
+	if headerStyle == (latte.Style{}) {
+		headerStyle = panelStyle.WithBold()
+	}
+	mutedStyle := h.theme.Muted
+	if mutedStyle == (latte.Style{}) {
+		mutedStyle = panelStyle
+	}
+
+	sub := buf.Sub(Region{X: region.X + boxX, Y: region.Y + boxY, Width: boxW, Height: boxH})
+	sub.FillBG(panelStyle)
+
+	// Draw border.
+	for x := 0; x < boxW; x++ {
+		sub.SetCell(x, 0, '─', panelStyle)
+		sub.SetCell(x, boxH-1, '─', panelStyle)
+	}
+	for y := 0; y < boxH; y++ {
+		sub.SetCell(0, y, '│', panelStyle)
+		sub.SetCell(boxW-1, y, '│', panelStyle)
+	}
+	sub.SetCell(0, 0, '┌', panelStyle)
+	sub.SetCell(boxW-1, 0, '┐', panelStyle)
+	sub.SetCell(0, boxH-1, '└', panelStyle)
+	sub.SetCell(boxW-1, boxH-1, '┘', panelStyle)
+
+	// Title.
+	title := " Keyboard Shortcuts "
+	sub.DrawText((boxW-len([]rune(title)))/2, 0, title, headerStyle)
+
+	// Column headers.
+	sub.DrawText(2, 1, "Key", mutedStyle)
+	sub.DrawText(14, 1, "Action", mutedStyle)
+	sub.DrawText(2, 2, repeatRune('─', boxW-4), mutedStyle)
+
+	// Binding rows.
+	maxRows := boxH - 5
+	start := h.scroll
+	for row := 0; row < maxRows; row++ {
+		idx := start + row
+		if idx >= len(h.bindings) {
+			break
+		}
+		b := h.bindings[idx]
+		label := b.Label
+		desc := b.Description
+		if len([]rune(label)) > 10 {
+			label = string([]rune(label)[:10])
+		}
+		if len([]rune(desc)) > boxW-16 {
+			desc = string([]rune(desc)[:boxW-16])
+		}
+		sub.DrawText(2, 3+row, fmt.Sprintf("%-12s", label), h.theme.Accent)
+		sub.DrawText(14, 3+row, desc, panelStyle)
+	}
+
+	// Footer.
+	footer := " Esc to close "
+	sub.DrawText((boxW-len([]rune(footer)))/2, boxH-1, footer, mutedStyle)
+}
+
+func (h *helpOverlay) HandleKey(ev *KeyEvent) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		if h.scroll > 0 {
+			h.scroll--
+		}
+		return true
+	case tcell.KeyDown:
+		h.scroll++
+		return true
+	}
+	return false
+}
+
+func (h *helpOverlay) Children() []Component { return nil }
+func (h *helpOverlay) AddChild(_ Component)  {}
+
+// repeatRune returns a string of n copies of r.
+func repeatRune(r rune, n int) string {
+	rs := []rune{r}
+	out := make([]rune, 0, n)
+	for i := 0; i < n; i++ {
+		out = append(out, rs...)
+	}
+	return string(out)
 }

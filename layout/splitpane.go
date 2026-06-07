@@ -28,9 +28,12 @@ const (
 //   - Alt+→  Grow  first panel (horizontal split)
 //   - Alt+↑  Shrink first panel (vertical split)
 //   - Alt+↓  Grow  first panel (vertical split)
+//
+// Mouse: click-drag the divider bar to resize interactively.
 type SplitPane struct {
 	oat.BaseComponent
 	oat.FocusBehavior
+	oat.BaseHitRegion
 
 	first     oat.Component
 	second    oat.Component
@@ -39,6 +42,12 @@ type SplitPane struct {
 	minFirst  int     // minimum cells for first panel
 	minSecond int     // minimum cells for second panel
 	divStyle  latte.Style
+
+	// Screen coords of the divider and the whole region, set during Render.
+	divScreenPos    int // absolute X (horizontal) or Y (vertical) of divider
+	regionScreenPos int // absolute X (horizontal) or Y (vertical) of region start
+	regionSize      int // Width (horizontal) or Height (vertical) of region
+	dragging        bool
 }
 
 // NewSplitPane creates a SplitPane with the given panels and direction.
@@ -135,6 +144,7 @@ func (sp *SplitPane) Measure(c oat.Constraint) oat.Size {
 // Render draws both panels and the divider into buf within region.
 func (sp *SplitPane) Render(buf *oat.Buffer, region oat.Region) {
 	sub := buf.Sub(region)
+	sp.SetHitRegion(sub.Region())
 
 	switch sp.dir {
 	case SplitHorizontal:
@@ -146,15 +156,23 @@ func (sp *SplitPane) Render(buf *oat.Buffer, region oat.Region) {
 		firstW = clampInt(firstW, sp.minFirst, available-sp.minSecond)
 		secondW := available - firstW
 
+		sp.divScreenPos = sub.Region().X + firstW
+		sp.regionScreenPos = sub.Region().X
+		sp.regionSize = region.Width
+
 		// Render first panel.
 		if sp.first != nil && firstW > 0 {
 			sp.first.Render(sub, oat.Region{X: 0, Y: 0, Width: firstW, Height: region.Height})
 		}
 
-		// Draw vertical divider.
+		// Draw vertical divider (highlighted during drag).
+		divStyle := sp.divStyle
+		if sp.dragging {
+			divStyle.Bold = true
+		}
 		divX := firstW
 		for y := 0; y < region.Height; y++ {
-			sub.SetCell(divX, y, '│', sp.divStyle)
+			sub.SetCell(divX, y, '│', divStyle)
 		}
 
 		// Render second panel.
@@ -171,15 +189,23 @@ func (sp *SplitPane) Render(buf *oat.Buffer, region oat.Region) {
 		firstH = clampInt(firstH, sp.minFirst, available-sp.minSecond)
 		secondH := available - firstH
 
+		sp.divScreenPos = sub.Region().Y + firstH
+		sp.regionScreenPos = sub.Region().Y
+		sp.regionSize = region.Height
+
 		// Render first panel.
 		if sp.first != nil && firstH > 0 {
 			sp.first.Render(sub, oat.Region{X: 0, Y: 0, Width: region.Width, Height: firstH})
 		}
 
 		// Draw horizontal divider.
+		divStyle := sp.divStyle
+		if sp.dragging {
+			divStyle.Bold = true
+		}
 		divY := firstH
 		for x := 0; x < region.Width; x++ {
-			sub.SetCell(x, divY, '─', sp.divStyle)
+			sub.SetCell(x, divY, '─', divStyle)
 		}
 
 		// Render second panel.
@@ -187,6 +213,46 @@ func (sp *SplitPane) Render(buf *oat.Buffer, region oat.Region) {
 			sp.second.Render(sub, oat.Region{X: 0, Y: firstH + 1, Width: region.Width, Height: secondH})
 		}
 	}
+}
+
+// HandleMouse handles drag-resize of the divider.
+// Clicking on the divider and then dragging updates the ratio in real time.
+func (sp *SplitPane) HandleMouse(ev *oat.MouseEvent) bool {
+	mx, my := ev.Position()
+
+	if ev.Buttons()&tcell.Button1 != 0 {
+		// Button held — check if on divider or already dragging.
+		if sp.dir == SplitHorizontal {
+			onDiv := mx == sp.divScreenPos
+			if sp.dragging || onDiv {
+				sp.dragging = true
+				available := sp.regionSize - 1
+				if available > 0 {
+					newFirst := mx - sp.regionScreenPos
+					sp.ratio = clampFloat(float64(newFirst)/float64(available), 0.1, 0.9)
+				}
+				return true
+			}
+		} else {
+			onDiv := my == sp.divScreenPos
+			if sp.dragging || onDiv {
+				sp.dragging = true
+				available := sp.regionSize - 1
+				if available > 0 {
+					newFirst := my - sp.regionScreenPos
+					sp.ratio = clampFloat(float64(newFirst)/float64(available), 0.1, 0.9)
+				}
+				return true
+			}
+		}
+	} else {
+		// Button released — end drag.
+		if sp.dragging {
+			sp.dragging = false
+			return true
+		}
+	}
+	return false
 }
 
 // HandleKey processes keyboard input for resizing the split.
