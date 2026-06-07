@@ -408,22 +408,23 @@ func (cv *Canvas) Run() error {
 	cv.render()
 	screen.Show()
 
+	return cv.eventLoop(screen, eventCh, sigCh)
+}
+
+// eventLoop is the shared event-dispatch loop used by both Run and RunWithTty.
+// sigCh may be nil (e.g. for SSH sessions where OS signals are irrelevant).
+func (cv *Canvas) eventLoop(screen tcell.Screen, eventCh <-chan tcell.Event, sigCh <-chan os.Signal) error {
 	for {
 		select {
 		case <-cv.quit:
 			return nil
-		case <-sigCh:
+		case sig := <-sigCh:
+			_ = sig
 			return nil
 		case <-cv.notifyCh:
-			// A notification timer fired — re-render so expired notifications
-			// are removed from the display without waiting for a key event.
 			cv.render()
 			screen.Show()
 		case <-cv.redrawCh:
-			// An explicit redraw was requested (e.g. from a background goroutine
-			// via State.SetState or ValueNotifier.Set). Rebuild the focus tree first
-			// so any structural tree changes (new/removed focusable widgets) are
-			// reflected before rendering.
 			cv.InvalidateLayout()
 			cv.render()
 			screen.Show()
